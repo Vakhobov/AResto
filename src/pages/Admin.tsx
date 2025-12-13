@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Search, UtensilsCrossed, ClipboardList } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MenuItem } from '@/types/kiosk';
 import { menuItems as initialMenuItems, categories } from '@/data/menuData';
@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AdminMenuItemCard } from '@/components/admin/AdminMenuItemCard';
 import { MenuItemForm } from '@/components/admin/MenuItemForm';
+import { OrderHistoryTable } from '@/components/admin/OrderHistoryTable';
 import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Admin = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>(initialMenuItems);
@@ -84,98 +86,122 @@ const Admin = () => {
             </Link>
             <div>
               <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
-              <p className="text-muted-foreground">Manage your menu items</p>
+              <p className="text-muted-foreground">Manage your menu and orders</p>
             </div>
           </div>
-          <Button
-            onClick={() => setIsFormOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Add Item
-          </Button>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-card border-border rounded-xl"
-            />
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <Button
-              variant={selectedCategory === 'all' ? 'default' : 'outline'}
-              onClick={() => setSelectedCategory('all')}
-              className="rounded-xl whitespace-nowrap"
-            >
-              All Items
-            </Button>
-            {categories.map(cat => (
+        {/* Tabs */}
+        <Tabs defaultValue="menu" className="space-y-6">
+          <TabsList className="bg-card border border-border rounded-xl p-1">
+            <TabsTrigger value="menu" className="rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <UtensilsCrossed className="w-4 h-4" />
+              Menu Items
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <ClipboardList className="w-4 h-4" />
+              Order History
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="menu" className="space-y-6">
+            {/* Add Item Button */}
+            <div className="flex justify-end">
               <Button
-                key={cat.id}
-                variant={selectedCategory === cat.id ? 'default' : 'outline'}
-                onClick={() => setSelectedCategory(cat.id)}
-                className="rounded-xl whitespace-nowrap gap-2"
+                onClick={() => setIsFormOpen(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl gap-2"
               >
-                <span>{cat.icon}</span>
-                {cat.name}
+                <Plus className="w-5 h-5" />
+                Add Item
               </Button>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <p className="text-muted-foreground text-sm">Total Items</p>
-            <p className="text-2xl font-bold text-foreground">{menuItems.length}</p>
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <p className="text-muted-foreground text-sm">Available</p>
-            <p className="text-2xl font-bold text-green-500">
-              {menuItems.filter(i => i.available).length}
-            </p>
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <p className="text-muted-foreground text-sm">Unavailable</p>
-            <p className="text-2xl font-bold text-red-500">
-              {menuItems.filter(i => !i.available).length}
-            </p>
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <p className="text-muted-foreground text-sm">Categories</p>
-            <p className="text-2xl font-bold text-foreground">{categories.length}</p>
-          </div>
-        </div>
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                  placeholder="Search items..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 bg-card border-border rounded-xl"
+                />
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                <Button
+                  variant={selectedCategory === 'all' ? 'default' : 'outline'}
+                  onClick={() => setSelectedCategory('all')}
+                  className="rounded-xl whitespace-nowrap"
+                >
+                  All Items
+                </Button>
+                {categories.map(cat => (
+                  <Button
+                    key={cat.id}
+                    variant={selectedCategory === cat.id ? 'default' : 'outline'}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className="rounded-xl whitespace-nowrap gap-2"
+                  >
+                    <span>{cat.icon}</span>
+                    {cat.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
-        {/* Items Grid */}
-        <motion.div
-          layout
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredItems.map(item => (
-              <AdminMenuItemCard
-                key={item.id}
-                item={item}
-                onEdit={() => setEditingItem(item)}
-                onDelete={() => handleDeleteItem(item.id)}
-                onToggleAvailability={() => handleToggleAvailability(item.id)}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+            {/* Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-card border border-border rounded-2xl p-4">
+                <p className="text-muted-foreground text-sm">Total Items</p>
+                <p className="text-2xl font-bold text-foreground">{menuItems.length}</p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4">
+                <p className="text-muted-foreground text-sm">Available</p>
+                <p className="text-2xl font-bold text-green-500">
+                  {menuItems.filter(i => i.available).length}
+                </p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4">
+                <p className="text-muted-foreground text-sm">Unavailable</p>
+                <p className="text-2xl font-bold text-red-500">
+                  {menuItems.filter(i => !i.available).length}
+                </p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4">
+                <p className="text-muted-foreground text-sm">Categories</p>
+                <p className="text-2xl font-bold text-foreground">{categories.length}</p>
+              </div>
+            </div>
 
-        {filteredItems.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No items found</p>
-          </div>
-        )}
+            {/* Items Grid */}
+            <motion.div
+              layout
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredItems.map(item => (
+                  <AdminMenuItemCard
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setEditingItem(item)}
+                    onDelete={() => handleDeleteItem(item.id)}
+                    onToggleAvailability={() => handleToggleAvailability(item.id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </motion.div>
+
+            {filteredItems.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No items found</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="orders">
+            <OrderHistoryTable />
+          </TabsContent>
+        </Tabs>
 
         {/* Add/Edit Form Modal */}
         <AnimatePresence>

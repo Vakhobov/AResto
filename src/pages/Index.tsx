@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Category, CartItem, MenuItem, Language, Screen, Order, PaymentMethod } from '@/types/kiosk';
+import { saveOrder } from '@/stores/orderStore';
 import { menuItems } from '@/data/menuData';
 import { CategorySidebar } from '@/components/kiosk/CategorySidebar';
 import { KioskHeader } from '@/components/kiosk/KioskHeader';
@@ -63,6 +64,7 @@ const Index = () => {
       createdAt: new Date(),
       status: 'pending',
     };
+    saveOrder(order);
     setCurrentOrder(order);
     setCart([]);
     setScreen('confirmation');
