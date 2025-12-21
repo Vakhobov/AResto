@@ -1,5 +1,8 @@
 import { Language } from '@/types/kiosk';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { Settings, ChefHat } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface KioskHeaderProps {
   language: Language;
@@ -30,24 +33,39 @@ export function KioskHeader({ language, onLanguageChange }: KioskHeaderProps) {
         {headings[language]}
       </motion.h1>
 
-      <div className="flex items-center gap-2 bg-secondary/50 rounded-full p-1">
-        {languages.map((lang) => (
-          <motion.button
-            key={lang.code}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => onLanguageChange(lang.code)}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 touch-manipulation
-              ${language === lang.code 
-                ? 'bg-primary text-primary-foreground shadow-button' 
-                : 'hover:bg-muted text-muted-foreground'
-              }
-            `}
-          >
-            <span className="text-xl">{lang.flag}</span>
-            <span className="text-sm font-medium hidden sm:inline">{lang.name}</span>
-          </motion.button>
-        ))}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 bg-secondary/50 rounded-full p-1">
+          {languages.map((lang) => (
+            <motion.button
+              key={lang.code}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onLanguageChange(lang.code)}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 touch-manipulation
+                ${language === lang.code 
+                  ? 'bg-primary text-primary-foreground shadow-button' 
+                  : 'hover:bg-muted text-muted-foreground'
+                }
+              `}
+            >
+              <span className="text-xl">{lang.flag}</span>
+              <span className="text-sm font-medium hidden sm:inline">{lang.name}</span>
+            </motion.button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" asChild className="rounded-full">
+            <Link to="/kitchen">
+              <ChefHat className="h-5 w-5" />
+            </Link>
+          </Button>
+          <Button variant="ghost" size="icon" asChild className="rounded-full">
+            <Link to="/admin">
+              <Settings className="h-5 w-5" />
+            </Link>
+          </Button>
+        </div>
       </div>
     </header>
   );

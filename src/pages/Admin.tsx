@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Search, UtensilsCrossed, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Plus, Search, UtensilsCrossed, ClipboardList, ChefHat } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MenuItem } from '@/types/kiosk';
 import { menuItems as initialMenuItems, categories } from '@/data/menuData';
@@ -89,6 +89,12 @@ const Admin = () => {
               <p className="text-muted-foreground">Manage your menu and orders</p>
             </div>
           </div>
+          <Button asChild className="gap-2 rounded-xl">
+            <Link to="/kitchen">
+              <ChefHat className="w-5 h-5" />
+              Kitchen Display
+            </Link>
+          </Button>
         </div>
 
         {/* Tabs */}
