@@ -10,15 +10,15 @@ interface KioskHeaderProps {
 }
 
 const languages: { code: Language; flag: string; name: string }[] = [
-  { code: 'en', flag: '🇺🇸', name: 'English' },
-  { code: 'es', flag: '🇪🇸', name: 'Español' },
-  { code: 'fr', flag: '🇫🇷', name: 'Français' },
+  { code: 'uz', flag: '🇺🇿', name: "O'zbekcha" },
+  { code: 'en', flag: '🇬🇧', name: 'English' },
+  { code: 'ru', flag: '🇷🇺', name: 'Русский' },
 ];
 
 const headings: Record<Language, string> = {
+  uz: "Bugun nima yeyishni xohlaysiz?",
   en: 'What will you be eating today?',
-  es: '¿Qué comerás hoy?',
-  fr: 'Que mangerez-vous aujourd\'hui?',
+  ru: 'Что вы будете есть сегодня?',
 };
 
 export function KioskHeader({ language, onLanguageChange }: KioskHeaderProps) {

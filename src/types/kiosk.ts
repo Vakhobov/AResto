@@ -23,7 +23,7 @@ export interface Order {
   status: 'pending' | 'preparing' | 'ready' | 'completed';
 }
 
-export type Language = 'en' | 'es' | 'fr';
+export type Language = 'uz' | 'en' | 'ru';
 
 export type PaymentMethod = 'card' | 'nfc' | 'cash';
 
