@@ -1,17 +1,17 @@
 import { useState, useCallback } from 'react';
-import { Category, CartItem, MenuItem, Language, Screen, Order, PaymentMethod, OrderType } from '@/types/kiosk';
+import { Category, CartItem, MenuItem, Language, Screen, Order, PaymentMethod, OrderType, ServiceType } from '@/types/kiosk';
 import { saveOrder } from '@/stores/orderStore';
 import { menuItems } from '@/data/menuData';
 import { CategorySidebar } from '@/components/kiosk/CategorySidebar';
 import { KioskHeader } from '@/components/kiosk/KioskHeader';
 import { FoodItemCard } from '@/components/kiosk/FoodItemCard';
 import { CartPanel } from '@/components/kiosk/CartPanel';
+import { MobileCartDrawer } from '@/components/kiosk/MobileCartDrawer';
 import { PaymentScreen } from '@/components/kiosk/PaymentScreen';
 import { OrderConfirmation } from '@/components/kiosk/OrderConfirmation';
 import { ReceiptScreen } from '@/components/kiosk/ReceiptScreen';
 import { IntroScreen } from '@/components/kiosk/IntroScreen';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
   const [activeCategory, setActiveCategory] = useState<Category>('tacos');
@@ -19,8 +19,8 @@ const Index = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [screen, setScreen] = useState<Screen>('intro');
   const [orderType, setOrderType] = useState<OrderType>('dine-in');
+  const [serviceType, setServiceType] = useState<ServiceType>('self-service');
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
-  const { toast } = useToast();
 
   const filteredItems = menuItems.filter(item => item.category === activeCategory);
 
@@ -34,13 +34,8 @@ const Index = () => {
       }
       return [...prev, { ...item, quantity: 1 }];
     });
-    
-    toast({
-      title: "Added to cart",
-      description: `${item.name} has been added to your order`,
-      duration: 1500,
-    });
-  }, [toast]);
+    // Removed toast notification - silent add with animation only
+  }, []);
 
   const updateQuantity = useCallback((id: string, quantity: number) => {
     setCart(prev => prev.map(item => 
@@ -58,11 +53,18 @@ const Index = () => {
   }, [cart.length]);
 
   const handlePaymentComplete = useCallback((method: PaymentMethod) => {
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
+    const total = subtotal + serviceFee;
+    
     const order: Order = {
       id: `order-${Date.now()}`,
       orderNumber: Math.floor(100 + Math.random() * 900),
       items: [...cart],
-      total: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      subtotal,
+      serviceFee,
+      total,
+      serviceType,
       createdAt: new Date(),
       status: 'pending',
       orderType,
@@ -71,13 +73,14 @@ const Index = () => {
     setCurrentOrder(order);
     setCart([]);
     setScreen('confirmation');
-  }, [cart, orderType]);
+  }, [cart, orderType, serviceType]);
 
   const handleNewOrder = useCallback(() => {
     setCart([]);
     setCurrentOrder(null);
     setScreen('intro');
     setActiveCategory('tacos');
+    setServiceType('self-service');
   }, []);
 
   const handleSelectOrderType = useCallback((type: OrderType) => {
@@ -89,10 +92,12 @@ const Index = () => {
     setScreen('receipt');
   }, []);
 
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
+  const total = subtotal + serviceFee;
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex flex-col md:flex-row">
       <AnimatePresence mode="wait">
         {screen === 'intro' && (
           <IntroScreen
@@ -105,8 +110,11 @@ const Index = () => {
         {screen === 'payment' && (
           <PaymentScreen
             items={cart}
+            subtotal={subtotal}
+            serviceFee={serviceFee}
             total={total}
             orderType={orderType}
+            serviceType={serviceType}
             onBack={() => setScreen('menu')}
             onPaymentComplete={handlePaymentComplete}
           />
@@ -145,13 +153,13 @@ const Index = () => {
             />
 
             {/* Food Grid */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide p-6">
+            <div className="flex-1 overflow-y-auto scrollbar-hide p-4 md:p-6 pb-24 md:pb-6">
               <motion.div
                 key={activeCategory}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4"
               >
                 {filteredItems.map((item, index) => (
                   <FoodItemCard
@@ -165,12 +173,24 @@ const Index = () => {
             </div>
           </main>
 
-          {/* Cart Panel */}
+          {/* Desktop Cart Panel */}
           <CartPanel
             items={cart}
             onUpdateQuantity={updateQuantity}
             onRemoveItem={removeItem}
             onCheckout={handleCheckout}
+            serviceType={serviceType}
+            onServiceTypeChange={setServiceType}
+          />
+
+          {/* Mobile Cart Drawer */}
+          <MobileCartDrawer
+            items={cart}
+            onUpdateQuantity={updateQuantity}
+            onRemoveItem={removeItem}
+            onCheckout={handleCheckout}
+            serviceType={serviceType}
+            onServiceTypeChange={setServiceType}
           />
         </>
       )}

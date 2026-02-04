@@ -16,11 +16,16 @@ export interface CartItem extends MenuItem {
 
 export type OrderType = 'dine-in' | 'take-out';
 
+export type ServiceType = 'self-service' | 'waiter-service';
+
 export interface Order {
   id: string;
   orderNumber: number;
   items: CartItem[];
   total: number;
+  subtotal: number;
+  serviceFee: number;
+  serviceType: ServiceType;
   createdAt: Date;
   status: 'pending' | 'preparing' | 'ready' | 'completed';
   orderType: OrderType;

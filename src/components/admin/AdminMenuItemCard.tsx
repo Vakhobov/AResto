@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Edit2, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { MenuItem } from '@/types/kiosk';
 import { Button } from '@/components/ui/button';
+import { formatPrice } from '@/lib/currency';
 
 interface AdminMenuItemCardProps {
   item: MenuItem;
@@ -35,7 +36,7 @@ export const AdminMenuItemCard = ({
         {!item.available && (
           <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
             <span className="text-destructive font-semibold text-sm bg-background/90 px-3 py-1 rounded-full">
-              Unavailable
+              Mavjud emas
             </span>
           </div>
         )}
@@ -43,11 +44,11 @@ export const AdminMenuItemCard = ({
 
       <div className="p-4">
         <div className="flex items-start justify-between mb-2">
-          <div>
+          <div className="flex-1 min-w-0 mr-2">
             <h3 className="font-semibold text-foreground line-clamp-1">{item.name}</h3>
             <p className="text-sm text-muted-foreground line-clamp-1">{item.description}</p>
           </div>
-          <span className="text-primary font-bold">${item.price.toFixed(2)}</span>
+          <span className="text-primary font-bold text-sm whitespace-nowrap">{formatPrice(item.price)}</span>
         </div>
 
         <div className="flex items-center gap-2 mt-4">
@@ -59,13 +60,13 @@ export const AdminMenuItemCard = ({
           >
             {item.available ? (
               <>
-                <ToggleRight className="w-4 h-4 text-green-500" />
-                <span className="text-xs">Available</span>
+                <ToggleRight className="w-4 h-4 text-kiosk-success" />
+                <span className="text-xs">Mavjud</span>
               </>
             ) : (
               <>
-                <ToggleLeft className="w-4 h-4 text-red-500" />
-                <span className="text-xs">Unavailable</span>
+                <ToggleLeft className="w-4 h-4 text-destructive" />
+                <span className="text-xs">Yo'q</span>
               </>
             )}
           </Button>
