@@ -11,6 +11,10 @@ export const getOrders = (): Order[] => {
       return orders.map((order: Order) => ({
         ...order,
         createdAt: new Date(order.createdAt),
+        // Ensure backwards compatibility with old orders
+        subtotal: order.subtotal ?? order.total,
+        serviceFee: order.serviceFee ?? 0,
+        serviceType: order.serviceType ?? 'self-service',
       }));
     }
   } catch (e) {

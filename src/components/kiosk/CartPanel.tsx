@@ -1,21 +1,44 @@
-import { CartItem } from '@/types/kiosk';
+import { CartItem, ServiceType } from '@/types/kiosk';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Minus, Trash2, ShoppingCart } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingCart, User, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatPrice } from '@/lib/currency';
 
 interface CartPanelProps {
   items: CartItem[];
   onUpdateQuantity: (id: string, quantity: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: () => void;
+  serviceType: ServiceType;
+  onServiceTypeChange: (type: ServiceType) => void;
 }
 
-export function CartPanel({ items, onUpdateQuantity, onRemoveItem, onCheckout }: CartPanelProps) {
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+const serviceTranslations = {
+  selfService: {
+    label: "O'z-o'ziga xizmat",
+    description: "Xizmat haqisiz",
+  },
+  waiterService: {
+    label: "Ofitsiant xizmati", 
+    description: "+10% xizmat haqi",
+  },
+};
+
+export function CartPanel({ 
+  items, 
+  onUpdateQuantity, 
+  onRemoveItem, 
+  onCheckout,
+  serviceType,
+  onServiceTypeChange,
+}: CartPanelProps) {
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
+  const total = subtotal + serviceFee;
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <aside className="w-80 min-h-screen bg-secondary/30 backdrop-blur-sm border-l border-border flex flex-col">
+    <aside className="hidden md:flex w-80 min-h-screen bg-secondary/30 backdrop-blur-sm border-l border-border flex-col">
       {/* Header */}
       <div className="p-6 border-b border-border">
         <div className="flex items-center gap-3">
@@ -23,8 +46,8 @@ export function CartPanel({ items, onUpdateQuantity, onRemoveItem, onCheckout }:
             <ShoppingCart className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Your Order</h2>
-            <p className="text-sm text-muted-foreground">{itemCount} items</p>
+            <h2 className="text-lg font-semibold text-foreground">Buyurtmangiz</h2>
+            <p className="text-sm text-muted-foreground">{itemCount} ta mahsulot</p>
           </div>
         </div>
       </div>
@@ -39,8 +62,8 @@ export function CartPanel({ items, onUpdateQuantity, onRemoveItem, onCheckout }:
               className="flex flex-col items-center justify-center h-48 text-center"
             >
               <ShoppingCart className="w-12 h-12 text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground text-sm">Your cart is empty</p>
-              <p className="text-muted-foreground/60 text-xs mt-1">Tap items to add them</p>
+              <p className="text-muted-foreground text-sm">Savat bo'sh</p>
+              <p className="text-muted-foreground/60 text-xs mt-1">Mahsulotlarni qo'shish uchun bosing</p>
             </motion.div>
           ) : (
             items.map((item) => (
@@ -63,7 +86,7 @@ export function CartPanel({ items, onUpdateQuantity, onRemoveItem, onCheckout }:
                       {item.name}
                     </h4>
                     <p className="text-primary font-semibold text-sm mt-1">
-                      ${(item.price * item.quantity).toFixed(2)}
+                      {formatPrice(item.price * item.quantity)}
                     </p>
                     
                     {/* Quantity Controls */}
@@ -106,18 +129,65 @@ export function CartPanel({ items, onUpdateQuantity, onRemoveItem, onCheckout }:
         </AnimatePresence>
       </div>
 
+      {/* Service Type Selection */}
+      {items.length > 0 && (
+        <div className="px-4 py-3 border-t border-border">
+          <p className="text-sm font-medium text-muted-foreground mb-3">Xizmat turi</p>
+          <div className="space-y-2">
+            <button
+              onClick={() => onServiceTypeChange('self-service')}
+              className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                serviceType === 'self-service'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <User className={`w-5 h-5 ${serviceType === 'self-service' ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="text-left">
+                <p className="text-sm font-medium text-foreground">{serviceTranslations.selfService.label}</p>
+                <p className="text-xs text-muted-foreground">{serviceTranslations.selfService.description}</p>
+              </div>
+            </button>
+            <button
+              onClick={() => onServiceTypeChange('waiter-service')}
+              className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                serviceType === 'waiter-service'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <ConciergeBell className={`w-5 h-5 ${serviceType === 'waiter-service' ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="text-left">
+                <p className="text-sm font-medium text-foreground">{serviceTranslations.waiterService.label}</p>
+                <p className="text-xs text-muted-foreground">{serviceTranslations.waiterService.description}</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Checkout */}
-      <div className="p-4 border-t border-border bg-background/50">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-muted-foreground">Total</span>
-          <span className="text-2xl font-bold text-foreground">${total.toFixed(2)}</span>
+      <div className="p-4 border-t border-border bg-background/50 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Oraliq jami</span>
+          <span className="text-foreground">{formatPrice(subtotal)}</span>
+        </div>
+        {serviceFee > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Xizmat haqi (10%)</span>
+            <span className="text-foreground">{formatPrice(serviceFee)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center pt-2 border-t border-border">
+          <span className="text-muted-foreground">Jami</span>
+          <span className="text-2xl font-bold text-foreground">{formatPrice(total)}</span>
         </div>
         <Button
           onClick={onCheckout}
           disabled={items.length === 0}
           className="w-full h-14 text-lg font-semibold rounded-2xl bg-primary hover:bg-primary/90 shadow-button disabled:opacity-50 disabled:shadow-none"
         >
-          Checkout
+          Buyurtma berish
         </Button>
       </div>
     </aside>

@@ -19,14 +19,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Clock, Package, CheckCircle2, ChefHat, RefreshCw } from 'lucide-react';
+import { Clock, Package, CheckCircle2, ChefHat, RefreshCw, UtensilsCrossed, ShoppingBag, User, ConciergeBell } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { formatPrice } from '@/lib/currency';
 
 const statusConfig = {
-  pending: { label: 'Pending', icon: Clock, color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30' },
-  preparing: { label: 'Preparing', icon: ChefHat, color: 'bg-blue-500/20 text-blue-500 border-blue-500/30' },
-  ready: { label: 'Ready', icon: Package, color: 'bg-primary/20 text-primary border-primary/30' },
-  completed: { label: 'Completed', icon: CheckCircle2, color: 'bg-green-500/20 text-green-500 border-green-500/30' },
+  pending: { label: 'Kutilmoqda', icon: Clock, color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30' },
+  preparing: { label: 'Tayyorlanmoqda', icon: ChefHat, color: 'bg-blue-500/20 text-blue-500 border-blue-500/30' },
+  ready: { label: 'Tayyor', icon: Package, color: 'bg-primary/20 text-primary border-primary/30' },
+  completed: { label: 'Yakunlandi', icon: CheckCircle2, color: 'bg-green-500/20 text-green-500 border-green-500/30' },
 };
 
 export const OrderHistoryTable = () => {
@@ -46,8 +47,8 @@ export const OrderHistoryTable = () => {
     updateOrderStatus(orderId, newStatus);
     loadOrders();
     toast({
-      title: 'Status Updated',
-      description: `Order status changed to ${statusConfig[newStatus].label}`,
+      title: 'Holat yangilandi',
+      description: `Buyurtma holati ${statusConfig[newStatus].label} ga o'zgartirildi`,
     });
   };
 
@@ -56,7 +57,7 @@ export const OrderHistoryTable = () => {
     : orders.filter(o => o.status === statusFilter);
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat('uz-UZ', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -67,15 +68,15 @@ export const OrderHistoryTable = () => {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-2">
           <Button
             variant={statusFilter === 'all' ? 'default' : 'outline'}
             onClick={() => setStatusFilter('all')}
             className="rounded-xl whitespace-nowrap"
             size="sm"
           >
-            All Orders ({orders.length})
+            Hammasi ({orders.length})
           </Button>
           {Object.entries(statusConfig).map(([key, config]) => (
             <Button
@@ -97,7 +98,7 @@ export const OrderHistoryTable = () => {
           className="rounded-xl gap-2"
         >
           <RefreshCw className="w-4 h-4" />
-          Refresh
+          Yangilash
         </Button>
       </div>
 
@@ -105,23 +106,24 @@ export const OrderHistoryTable = () => {
       {filteredOrders.length === 0 ? (
         <div className="text-center py-12 bg-card border border-border rounded-2xl">
           <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">No orders found</p>
+          <p className="text-muted-foreground">Buyurtmalar topilmadi</p>
         </div>
       ) : (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-card border border-border rounded-2xl overflow-hidden"
+          className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto"
         >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="text-foreground">Order #</TableHead>
-                <TableHead className="text-foreground">Date</TableHead>
-                <TableHead className="text-foreground">Items</TableHead>
-                <TableHead className="text-foreground">Total</TableHead>
-                <TableHead className="text-foreground">Status</TableHead>
-                <TableHead className="text-foreground text-right">Actions</TableHead>
+                <TableHead className="text-foreground">Raqam</TableHead>
+                <TableHead className="text-foreground">Sana</TableHead>
+                <TableHead className="text-foreground">Turi</TableHead>
+                <TableHead className="text-foreground">Mahsulotlar</TableHead>
+                <TableHead className="text-foreground">Jami</TableHead>
+                <TableHead className="text-foreground">Holat</TableHead>
+                <TableHead className="text-foreground text-right">Amallar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -132,8 +134,38 @@ export const OrderHistoryTable = () => {
                     <TableCell className="font-bold text-primary">
                       #{order.orderNumber}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
                       {formatDate(order.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="outline" className="w-fit gap-1 text-xs">
+                          {order.orderType === 'dine-in' ? (
+                            <>
+                              <UtensilsCrossed className="w-3 h-3" />
+                              Bu yerda
+                            </>
+                          ) : (
+                            <>
+                              <ShoppingBag className="w-3 h-3" />
+                              Olib ketish
+                            </>
+                          )}
+                        </Badge>
+                        <Badge variant="outline" className="w-fit gap-1 text-xs">
+                          {order.serviceType === 'waiter-service' ? (
+                            <>
+                              <ConciergeBell className="w-3 h-3" />
+                              Ofitsiant
+                            </>
+                          ) : (
+                            <>
+                              <User className="w-3 h-3" />
+                              O'zi
+                            </>
+                          )}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-[200px]">
@@ -145,8 +177,8 @@ export const OrderHistoryTable = () => {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="font-semibold text-foreground">
-                      ${order.total.toFixed(2)}
+                    <TableCell className="font-semibold text-foreground whitespace-nowrap">
+                      {formatPrice(order.total)}
                     </TableCell>
                     <TableCell>
                       <Badge 
