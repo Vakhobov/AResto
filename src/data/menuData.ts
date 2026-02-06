@@ -53,6 +53,7 @@ export const menuItems: MenuItem[] = [
     description: 'Beef patty with melted cheese',
     available: true,
     ingredients: ['Beef patty', 'Cheddar cheese', 'Lettuce', 'Tomato', 'Onion', 'Special sauce', 'Sesame bun'],
+    modelUrl: '/models/burger-demo.glb',
   },
   {
     id: 'burger-2',
