@@ -109,11 +109,11 @@ const Setup = () => {
             <p className="font-medium text-foreground">Yaratilajak akkaunt:</p>
             <div className="flex justify-between text-muted-foreground">
               <span>Email:</span>
-              <span className="font-mono text-foreground">{SUPERADMIN_EMAIL}</span>
+              <span className="font-mono text-foreground">{"SuperAdmin"}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Parol:</span>
-              <span className="font-mono text-foreground">{SUPERADMIN_PASSWORD}</span>
+              <span className="font-mono text-foreground">{"Super Admin Password"}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Rol:</span>

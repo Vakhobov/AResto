@@ -180,7 +180,7 @@ const Login = () => {
           </form>
         </div>
 
-        {/* Setup link */}
+        {/* Setup link
         <div className="mt-4 flex flex-col items-center gap-2">
           <button
             onClick={() => navigate('/setup')}
@@ -189,12 +189,7 @@ const Login = () => {
             <ShieldCheck className="h-3.5 w-3.5" />
             Birinchi marta? SuperAdmin akkauntini yarating
           </button>
-          <p className="text-center text-xs text-muted-foreground">
-            SuperAdmin: <span className="font-mono text-foreground">superadmin@aresto.com</span>
-            {' / '}
-            <span className="font-mono text-foreground">Admin1234!</span>
-          </p>
-        </div>
+        </div> */}
       </motion.div>
     </div>
   );
