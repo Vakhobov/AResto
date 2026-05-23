@@ -19,6 +19,8 @@ import { IntroScreen } from '@/components/kiosk/IntroScreen';
 import { FoodDetailModal } from '@/components/kiosk/FoodDetailModal';
 import { TableNumberScreen } from '@/components/kiosk/TableNumberScreen';
 import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 
@@ -354,7 +356,18 @@ const Index = () => {
             </div>
           )}
           <CategorySidebar activeCategory={activeCategory} onCategoryChange={setActiveCategory} categories={categories} />
-          <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
+          <main className="relative flex-1 flex flex-col min-h-screen overflow-hidden">
+            {orderType === 'take-out' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute left-4 top-4 z-10 bg-background/70 shadow-lg"
+                onClick={() => setScreen('intro')}
+                aria-label="Go back"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            )}
             <KioskHeader language={language} onLanguageChange={setLanguage} />
             <div className="flex-1 overflow-y-auto scrollbar-hide p-4 sm:p-5 lg:p-6 pb-24 lg:pb-6">
               <motion.div
