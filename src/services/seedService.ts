@@ -13,7 +13,7 @@ import { removeUndefinedFields } from '@/lib/firestoreUtils';
 
 const CATEGORIES_COLLECTION = 'categories';
 const FOODS_COLLECTION = 'foods';
-const TABLES_COLLECTION = 'restaurantTables';
+const TABLES_COLLECTION = 'tables';
 
 const toFirestoreCategory = (category: typeof categories[number], index: number) =>
   removeUndefinedFields({
@@ -121,6 +121,40 @@ export const seedAllDefaultData = async (): Promise<void> => {
   await seedDefaultFoods();
   await seedDefaultTables();
   console.log('Seed process completed!');
+};
+
+export const seedBranchDefaultData = async (branchId: string): Promise<void> => {
+  console.log('Starting branch seed process...', branchId);
+  const now = Timestamp.fromDate(new Date());
+
+  for (const [index, category] of categories.entries()) {
+    const categoryRef = doc(db, 'branches', branchId, CATEGORIES_COLLECTION, category.id);
+    await setDoc(categoryRef, {
+      ...toFirestoreCategory(category, index),
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  for (const food of menuItems) {
+    const foodRef = doc(db, 'branches', branchId, FOODS_COLLECTION, food.id);
+    await setDoc(foodRef, {
+      ...toFirestoreFood(food),
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  for (let i = 1; i <= 20; i++) {
+    const tableRef = doc(db, 'branches', branchId, TABLES_COLLECTION, `table-${i}`);
+    await setDoc(tableRef, {
+      ...toFirestoreTable(i),
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  console.log('Branch seed process completed!', branchId);
 };
 
 // Manual seed function - call this in browser console or from a dev page

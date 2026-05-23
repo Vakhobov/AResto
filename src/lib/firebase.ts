@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -10,48 +11,41 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const missingFirebaseEnvVars = Object.entries(firebaseConfig)
-  .filter(([, value]) => !value)
-  .map(([key]) => `VITE_FIREBASE_${key.replace(/[A-Z]/g, letter => `_${letter}`).toUpperCase()}`);
+const missingKeys = Object.entries(firebaseConfig)
+  .filter(([, v]) => !v)
+  .map(([k]) => k);
 
-if (missingFirebaseEnvVars.length > 0) {
-  console.warn(
-    `Firebase config is incomplete. Missing: ${missingFirebaseEnvVars.join(', ')}. Firestore order features will fail until .env is configured.`,
-  );
+if (missingKeys.length > 0) {
+  console.error('❌ Firebase config incomplete. Missing:', missingKeys.join(', '));
+  throw new Error(`Firebase configuration missing required keys: ${missingKeys.join(', ')}`);
 }
 
-export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const app  = initializeApp(firebaseConfig);
+export const db   = getFirestore(app);
+export const auth = getAuth(app);
 
-
-// -----------------------------------------------------------------------------
-// DEBUG CHECK
-// -----------------------------------------------------------------------------
-
-function checkFirebaseConfig() {
-  const keys = [
-    "apiKey",
-    "authDomain",
-    "projectId",
-    "storageBucket",
-    "messagingSenderId",
-    "appId"
-  ] as const;
-
-  const missing = keys.filter(k => !firebaseConfig[k]);
-
-  console.log("📋 Firebase Config Check:");
-  console.log("--------------------------------------------------");
-  console.log("Missing keys:", missing.length > 0 ? missing : "None ✅");
-  console.log("Full config:", JSON.stringify(firebaseConfig, null, 2));
-
-  if (missing.length > 0) {
-    console.error("❌ Firebase init FAILED - missing env vars!");
-  } else {
-    console.log("✅ Firebase config loaded successfully.");
+/**
+ * Enable offline persistence (IndexedDB) for Firestore.
+ * Allows the app to work for 12+ hours offline with local caching.
+ * 
+ * This must be called before any Firestore operations.
+ */
+export async function enableOfflinePersistence(): Promise<void> {
+  try {
+    await enableIndexedDbPersistence(db);
+    console.log('✅ Firestore offline persistence enabled');
+  } catch (err: any) {
+    if (err.code === 'failed-precondition') {
+      // Multiple tabs open with the same database
+      console.warn(
+        '⚠️  Multiple tabs open - offline persistence disabled for this tab. ' +
+        'Close other tabs or this feature will not work optimally.',
+      );
+    } else if (err.code === 'unimplemented') {
+      // Browser doesn't support IndexedDB
+      console.warn('⚠️  IndexedDB not supported in this browser - offline mode disabled');
+    } else {
+      console.error('❌ Failed to enable offline persistence:', err);
+    }
   }
-  console.log("--------------------------------------------------");
 }
-
-// Run check after a short delay
-setTimeout(checkFirebaseConfig, 500);

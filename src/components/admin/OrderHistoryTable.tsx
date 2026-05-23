@@ -24,6 +24,11 @@ import { useToast } from '@/hooks/use-toast';
 import { formatPrice } from '@/lib/currency';
 import { CanonicalOrderStatus, normalizeOrderStatus } from '@/lib/orderStatus';
 
+interface OrderHistoryTableProps {
+  /** Filter orders to this branch. null/undefined = show all (SuperAdmin). */
+  branchId?: string | null;
+}
+
 const statusConfig: Record<CanonicalOrderStatus, { label: string; icon: typeof Clock; color: string }> = {
   new: { label: 'Yangi', icon: Clock, color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30' },
   preparing: { label: 'Tayyorlanmoqda', icon: ChefHat, color: 'bg-blue-500/20 text-blue-500 border-blue-500/30' },
@@ -31,7 +36,7 @@ const statusConfig: Record<CanonicalOrderStatus, { label: string; icon: typeof C
   served: { label: 'Yetkazildi', icon: CheckCircle2, color: 'bg-green-500/20 text-green-500 border-green-500/30' },
 };
 
-export const OrderHistoryTable = () => {
+export const OrderHistoryTable = ({ branchId }: OrderHistoryTableProps) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -39,8 +44,9 @@ export const OrderHistoryTable = () => {
   const { toast } = useToast();
 
   const loadOrders = async () => {
+    if (!branchId) { setLoading(false); return; }
     try {
-      setOrders(await getOrders());
+      setOrders(await getOrders(branchId));
       setError(null);
     } catch (loadError) {
       console.error('Failed to load admin orders:', loadError);
@@ -51,7 +57,12 @@ export const OrderHistoryTable = () => {
   };
 
   useEffect(() => {
+    if (!branchId) {
+      setLoading(false);
+      return;
+    }
     const unsubscribe = subscribeToOrders(
+      branchId,
       nextOrders => {
         setOrders(nextOrders);
         setLoading(false);
@@ -65,11 +76,12 @@ export const OrderHistoryTable = () => {
     );
 
     return unsubscribe;
-  }, []);
+  }, [branchId]);
 
   const handleStatusChange = async (orderId: string, newStatus: CanonicalOrderStatus) => {
+    if (!branchId) return;
     try {
-      await updateOrderStatus(orderId, newStatus);
+      await updateOrderStatus(branchId, orderId, newStatus);
       toast({
         title: 'Holat yangilandi',
         description: `Buyurtma holati ${statusConfig[newStatus].label} ga o'zgartirildi`,
@@ -84,8 +96,8 @@ export const OrderHistoryTable = () => {
     }
   };
 
-  const filteredOrders = statusFilter === 'all' 
-    ? orders 
+  const filteredOrders = statusFilter === 'all'
+    ? orders
     : orders.filter(o => normalizeOrderStatus(o.status) === statusFilter);
 
   const formatDate = (date: Date) => {
@@ -224,8 +236,8 @@ export const OrderHistoryTable = () => {
                       {formatPrice(order.total)}
                     </TableCell>
                     <TableCell>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={`gap-1 ${statusConfig[status].color}`}
                       >
                         <StatusIcon className="w-3 h-3" />

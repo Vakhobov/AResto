@@ -8,17 +8,19 @@ import { RestaurantTable } from '@/services/tableService';
 
 interface TableNumberScreenProps {
   language: Language;
+  branchId: string;
   onConfirm: (tableNumber: number) => void;
   onBack: () => void;
 }
 
-export function TableNumberScreen({ language, onConfirm, onBack }: TableNumberScreenProps) {
+export function TableNumberScreen({ language, branchId, onConfirm, onBack }: TableNumberScreenProps) {
   const [input, setInput] = useState('');
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = subscribeToTables(
+      branchId,
       nextTables => {
         setTables(nextTables);
         setLoading(false);
@@ -31,7 +33,7 @@ export function TableNumberScreen({ language, onConfirm, onBack }: TableNumberSc
     );
 
     return unsubscribe;
-  }, []);
+  }, [branchId]);
 
   const availableTables = tables.length > 0 ? tables.filter(t => t.active && t.status === 'available') : [];
   const maxTableNumber = tables.length > 0 ? Math.max(...tables.map(t => t.number)) : 50;

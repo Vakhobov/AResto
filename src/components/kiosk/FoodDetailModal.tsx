@@ -91,7 +91,6 @@ export function FoodDetailModal({ item, isOpen, onClose, onAddToCart }: FoodDeta
             <div className="relative aspect-square w-full bg-secondary/30 overflow-hidden rounded-t-3xl sm:rounded-t-3xl">
               {has3DModel ? (
                 <>
-                  {/* @ts-ignore - model-viewer custom element */}
                   <model-viewer
                     ref={modelRef}
                     src={item.modelUrl}

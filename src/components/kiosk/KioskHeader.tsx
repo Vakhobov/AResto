@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { Settings, ChefHat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 
 interface KioskHeaderProps {
   language: Language;
@@ -22,6 +23,11 @@ const headings: Record<Language, string> = {
 };
 
 export function KioskHeader({ language, onLanguageChange }: KioskHeaderProps) {
+  // Hide staff navigation links when the device is in customer mode
+  // Hide kitchen/admin nav links for menu-role users (they can only access /)
+  const { userProfile } = useAuth();
+  const isMenuOnly = userProfile?.role === 'menu';
+
   return (
     <header className="flex items-center justify-between px-8 py-6">
       <motion.h1
@@ -42,8 +48,8 @@ export function KioskHeader({ language, onLanguageChange }: KioskHeaderProps) {
               onClick={() => onLanguageChange(lang.code)}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 touch-manipulation
-                ${language === lang.code 
-                  ? 'bg-primary text-primary-foreground shadow-button' 
+                ${language === lang.code
+                  ? 'bg-primary text-primary-foreground shadow-button'
                   : 'hover:bg-muted text-muted-foreground'
                 }
               `}
@@ -54,18 +60,21 @@ export function KioskHeader({ language, onLanguageChange }: KioskHeaderProps) {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" asChild className="rounded-full">
-            <Link to="/kitchen">
-              <ChefHat className="h-5 w-5" />
-            </Link>
-          </Button>
-          <Button variant="ghost" size="icon" asChild className="rounded-full">
-            <Link to="/admin">
-              <Settings className="h-5 w-5" />
-            </Link>
-          </Button>
-        </div>
+        {/* Staff navigation — hidden for menu-role users */}
+        {!isMenuOnly && (
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" asChild className="rounded-full">
+              <Link to="/kitchen">
+                <ChefHat className="h-5 w-5" />
+              </Link>
+            </Button>
+            <Button variant="ghost" size="icon" asChild className="rounded-full">
+              <Link to="/admin">
+                <Settings className="h-5 w-5" />
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   );

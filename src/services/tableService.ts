@@ -1,3 +1,9 @@
+/**
+ * tableService.ts
+ * ───────────────
+ * Firestore CRUD for restaurant tables nested under:
+ *   /branches/{branchId}/tables/{tableId}
+ */
 import {
   addDoc,
   collection,
@@ -27,115 +33,119 @@ export interface RestaurantTable {
   updatedAt: Date;
 }
 
-const TABLES_COLLECTION = 'restaurantTables';
-
 type TableInput = Omit<RestaurantTable, 'id' | 'createdAt' | 'updatedAt'>;
-type FirestoreTableData = Omit<RestaurantTable, 'id'> & {
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
 
-const toDate = (value: unknown): Date => {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+// ─── Path helpers ─────────────────────────────────────────────────────────────
+
+const tablesCol = (branchId: string) =>
+  collection(db, 'branches', branchId, 'tables');
+
+const tableDocRef = (branchId: string, tableId: string) =>
+  doc(db, 'branches', branchId, 'tables', tableId);
+
+// ─── Serialisation ────────────────────────────────────────────────────────────
+
+const toDate = (v: unknown): Date => {
+  if (v instanceof Timestamp) return v.toDate();
+  if (v instanceof Date) return v;
   return new Date();
 };
 
-const removeUndefined = <T extends Record<string, unknown>>(value: T): T => {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-  ) as T;
-};
+const fromFirestore = (id: string, data: Record<string, unknown>): RestaurantTable => ({
+  id,
+  number: Number(data.number ?? 0),
+  name: data.name ? String(data.name) : undefined,
+  status: (data.status as TableStatus) ?? 'available',
+  currentOrderId: data.currentOrderId ? String(data.currentOrderId) : undefined,
+  active: Boolean(data.active ?? true),
+  createdAt: toDate(data.createdAt),
+  updatedAt: toDate(data.updatedAt),
+});
 
-const normalizeTableForFirestore = (tableData: TableInput): FirestoreTableData => {
-  const now = new Date();
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-  return removeUndefinedFields({
+export const createTable = async (
+  branchId: string,
+  tableData: TableInput,
+): Promise<RestaurantTable> => {
+  const now = Timestamp.fromDate(new Date());
+  const data = removeUndefinedFields({
     number: tableData.number,
     name: tableData.name,
-    status: tableData.status,
+    status: tableData.status ?? 'available',
     currentOrderId: tableData.currentOrderId,
     active: tableData.active ?? true,
-    createdAt: Timestamp.fromDate(now),
-    updatedAt: Timestamp.fromDate(now),
+    createdAt: now,
+    updatedAt: now,
   });
+  const ref = await addDoc(tablesCol(branchId), data);
+  return fromFirestore(ref.id, data);
 };
 
-const fromFirestoreTable = (id: string, data: Record<string, unknown>): RestaurantTable => {
-  return {
-    id,
-    number: Number(data.number ?? 0),
-    name: data.name ? String(data.name) : undefined,
-    status: (data.status as TableStatus) ?? 'available',
-    currentOrderId: data.currentOrderId ? String(data.currentOrderId) : undefined,
-    active: Boolean(data.active ?? true),
-    createdAt: toDate(data.createdAt),
-    updatedAt: toDate(data.updatedAt),
-  };
-};
-
-export const createTable = async (tableData: TableInput): Promise<RestaurantTable> => {
-  const normalizedTable = normalizeTableForFirestore(tableData);
-  const docRef = await addDoc(collection(db, TABLES_COLLECTION), normalizedTable);
-  return fromFirestoreTable(docRef.id, normalizedTable);
-};
-
-export const updateTable = async (tableId: string, tableData: Partial<TableInput>): Promise<void> => {
-  const updateData: Partial<FirestoreTableData> = removeUndefinedFields({
-    ...(tableData.number !== undefined && { number: tableData.number }),
-    ...(tableData.name !== undefined && { name: tableData.name }),
-    ...(tableData.status !== undefined && { status: tableData.status }),
+export const updateTable = async (
+  branchId: string,
+  tableId: string,
+  tableData: Partial<TableInput>,
+): Promise<void> => {
+  const update = removeUndefinedFields({
+    ...(tableData.number         !== undefined && { number: tableData.number }),
+    ...(tableData.name           !== undefined && { name: tableData.name }),
+    ...(tableData.status         !== undefined && { status: tableData.status }),
     ...(tableData.currentOrderId !== undefined && { currentOrderId: tableData.currentOrderId }),
-    ...(tableData.active !== undefined && { active: tableData.active }),
+    ...(tableData.active         !== undefined && { active: tableData.active }),
     updatedAt: Timestamp.fromDate(new Date()),
   });
-  await updateDoc(doc(db, TABLES_COLLECTION, tableId), updateData);
+  await updateDoc(tableDocRef(branchId, tableId), update);
 };
 
-export const deleteTable = async (tableId: string): Promise<void> => {
-  await deleteDoc(doc(db, TABLES_COLLECTION, tableId));
+export const deleteTable = async (branchId: string, tableId: string): Promise<void> => {
+  await deleteDoc(tableDocRef(branchId, tableId));
 };
 
 export const subscribeToTables = (
+  branchId: string,
   callback: (tables: RestaurantTable[]) => void,
-  onError?: (error: Error) => void,
+  onError?: (err: Error) => void,
 ) => {
-  const tablesQuery = query(collection(db, TABLES_COLLECTION), orderBy('number', 'asc'));
-
+  const q = query(tablesCol(branchId), orderBy('number', 'asc'));
   return onSnapshot(
-    tablesQuery,
-    snapshot => {
-      callback(snapshot.docs.map(tableDoc => fromFirestoreTable(tableDoc.id, tableDoc.data())));
-    },
-    error => onError?.(error),
+    q,
+    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
+    err => onError?.(err),
   );
 };
 
-export const getTables = async (): Promise<RestaurantTable[]> => {
-  const tablesQuery = query(collection(db, TABLES_COLLECTION), orderBy('number', 'asc'));
-  const snapshot = await getDocs(tablesQuery);
-  return snapshot.docs.map(tableDoc => fromFirestoreTable(tableDoc.id, tableDoc.data()));
+export const getTables = async (branchId: string): Promise<RestaurantTable[]> => {
+  const snap = await getDocs(query(tablesCol(branchId), orderBy('number', 'asc')));
+  return snap.docs.map(d => fromFirestore(d.id, d.data()));
 };
 
-export const getTableByNumber = async (tableNumber: number): Promise<RestaurantTable | null> => {
-  const tablesQuery = query(collection(db, TABLES_COLLECTION), where('number', '==', tableNumber));
-  const snapshot = await getDocs(tablesQuery);
-  if (snapshot.empty) return null;
-  const doc = snapshot.docs[0];
-  return fromFirestoreTable(doc.id, doc.data());
+// ─── Table lookup by number ───────────────────────────────────────────────────
+
+const getTableByNumber = async (
+  branchId: string,
+  tableNumber: number,
+): Promise<RestaurantTable | null> => {
+  const snap = await getDocs(
+    query(tablesCol(branchId), where('number', '==', tableNumber)),
+  );
+  if (snap.empty) return null;
+  return fromFirestore(snap.docs[0].id, snap.docs[0].data());
 };
 
-export const markTableOccupied = async (tableNumber: number, orderId: string): Promise<void> => {
-  const table = await getTableByNumber(tableNumber);
-  if (table) {
-    await updateTable(table.id, { status: 'occupied', currentOrderId: orderId });
-  }
+export const markTableOccupied = async (
+  branchId: string,
+  tableNumber: number,
+  orderId: string,
+): Promise<void> => {
+  const table = await getTableByNumber(branchId, tableNumber);
+  if (table) await updateTable(branchId, table.id, { status: 'occupied', currentOrderId: orderId });
 };
 
-export const markTableAvailable = async (tableNumber: number): Promise<void> => {
-  const table = await getTableByNumber(tableNumber);
-  if (table) {
-    await updateTable(table.id, { status: 'available', currentOrderId: undefined });
-  }
+export const markTableAvailable = async (
+  branchId: string,
+  tableNumber: number,
+): Promise<void> => {
+  const table = await getTableByNumber(branchId, tableNumber);
+  if (table) await updateTable(branchId, table.id, { status: 'available', currentOrderId: undefined });
 };

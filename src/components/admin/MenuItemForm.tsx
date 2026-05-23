@@ -18,11 +18,12 @@ import { Switch } from '@/components/ui/switch';
 
 interface MenuItemFormProps {
   item: MenuItem | null;
+  categories?: ReadonlyArray<{ id: string; name: string; icon: string }>;
   onSubmit: (item: Omit<MenuItem, 'id'>) => void;
   onClose: () => void;
 }
 
-export const MenuItemForm = ({ item, onSubmit, onClose }: MenuItemFormProps) => {
+export const MenuItemForm = ({ item, categories: formCategories = categories, onSubmit, onClose }: MenuItemFormProps) => {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -126,7 +127,7 @@ export const MenuItemForm = ({ item, onSubmit, onClose }: MenuItemFormProps) => 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((cat) => (
+                  {formCategories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.icon} {cat.name}
                     </SelectItem>

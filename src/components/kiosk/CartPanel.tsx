@@ -1,4 +1,4 @@
-import { CartItem, ServiceType } from '@/types/kiosk';
+import { CartItem, OrderType, ServiceType } from '@/types/kiosk';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Minus, Trash2, ShoppingCart, User, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,11 +6,14 @@ import { formatPrice } from '@/lib/currency';
 
 interface CartPanelProps {
   items: CartItem[];
+  orderType: OrderType;
   onUpdateQuantity: (id: string, quantity: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: () => void;
   serviceType: ServiceType;
   onServiceTypeChange: (type: ServiceType) => void;
+  checkoutDisabled?: boolean;
+  disabledMessage?: string;
 }
 
 const serviceTranslations = {
@@ -26,11 +29,14 @@ const serviceTranslations = {
 
 export function CartPanel({ 
   items, 
+  orderType,
   onUpdateQuantity, 
   onRemoveItem, 
   onCheckout,
   serviceType,
   onServiceTypeChange,
+  checkoutDisabled = false,
+  disabledMessage,
 }: CartPanelProps) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
@@ -38,7 +44,7 @@ export function CartPanel({
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <aside className="hidden md:flex w-80 min-h-screen bg-secondary/30 backdrop-blur-sm border-l border-border flex-col">
+    <aside className="hidden lg:flex w-80 xl:w-96 min-h-screen bg-secondary/30 backdrop-blur-sm border-l border-border flex-col">
       {/* Header */}
       <div className="p-6 border-b border-border">
         <div className="flex items-center gap-3">
@@ -130,7 +136,7 @@ export function CartPanel({
       </div>
 
       {/* Service Type Selection */}
-      {items.length > 0 && (
+      {items.length > 0 && orderType !== 'take-out' && (
         <div className="px-4 py-3 border-t border-border">
           <p className="text-sm font-medium text-muted-foreground mb-3">Xizmat turi</p>
           <div className="space-y-2">
@@ -184,11 +190,14 @@ export function CartPanel({
         </div>
         <Button
           onClick={onCheckout}
-          disabled={items.length === 0}
+          disabled={items.length === 0 || checkoutDisabled}
           className="w-full h-14 text-lg font-semibold rounded-2xl bg-primary hover:bg-primary/90 shadow-button disabled:opacity-50 disabled:shadow-none"
         >
           Buyurtma berish
         </Button>
+        {checkoutDisabled && disabledMessage && (
+          <p className="text-xs text-center text-muted-foreground">{disabledMessage}</p>
+        )}
       </div>
     </aside>
   );

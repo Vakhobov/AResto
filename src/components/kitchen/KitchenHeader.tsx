@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChefHat, Settings } from 'lucide-react';
+import { ChefHat, Settings, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -8,9 +8,10 @@ interface KitchenHeaderProps {
   newCount: number;
   preparingCount: number;
   readyCount: number;
+  onLogout?: () => void;
 }
 
-const KitchenHeader = ({ newCount, preparingCount, readyCount }: KitchenHeaderProps) => {
+const KitchenHeader = ({ newCount, preparingCount, readyCount, onLogout }: KitchenHeaderProps) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -49,6 +50,12 @@ const KitchenHeader = ({ newCount, preparingCount, readyCount }: KitchenHeaderPr
               Admin
             </Link>
           </Button>
+
+          {onLogout && (
+            <Button variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-foreground" onClick={onLogout} title="Chiqish">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
     </header>

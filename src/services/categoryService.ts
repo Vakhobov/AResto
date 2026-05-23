@@ -1,3 +1,9 @@
+/**
+ * categoryService.ts
+ * ──────────────────
+ * Firestore CRUD for categories nested under:
+ *   /branches/{branchId}/categories/{categoryId}
+ */
 import {
   addDoc,
   collection,
@@ -23,90 +29,88 @@ export interface Category {
   updatedAt: Date;
 }
 
-const CATEGORIES_COLLECTION = 'categories';
-
 type CategoryInput = Omit<Category, 'id' | 'createdAt' | 'updatedAt'>;
-type FirestoreCategoryData = Omit<Category, 'id'> & {
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
 
-const toDate = (value: unknown): Date => {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+// ─── Path helpers ─────────────────────────────────────────────────────────────
+
+const catsCol = (branchId: string) =>
+  collection(db, 'branches', branchId, 'categories');
+
+const catDoc = (branchId: string, catId: string) =>
+  doc(db, 'branches', branchId, 'categories', catId);
+
+// ─── Serialisation ────────────────────────────────────────────────────────────
+
+const toDate = (v: unknown): Date => {
+  if (v instanceof Timestamp) return v.toDate();
+  if (v instanceof Date) return v;
   return new Date();
 };
 
-const removeUndefined = <T extends Record<string, unknown>>(value: T): T => {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-  ) as T;
-};
+const fromFirestore = (id: string, data: Record<string, unknown>): Category => ({
+  id,
+  name: String(data.name ?? ''),
+  icon: String(data.icon ?? ''),
+  sortOrder: data.sortOrder != null ? Number(data.sortOrder) : undefined,
+  active: Boolean(data.active ?? true),
+  createdAt: toDate(data.createdAt),
+  updatedAt: toDate(data.updatedAt),
+});
 
-const normalizeCategoryForFirestore = (categoryData: CategoryInput): FirestoreCategoryData => {
-  const now = new Date();
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-  return removeUndefinedFields({
-    name: categoryData.name,
-    icon: categoryData.icon,
-    sortOrder: categoryData.sortOrder ?? 0,
-    active: categoryData.active ?? true,
-    createdAt: Timestamp.fromDate(now),
-    updatedAt: Timestamp.fromDate(now),
+export const createCategory = async (
+  branchId: string,
+  data: CategoryInput,
+): Promise<Category> => {
+  const now = Timestamp.fromDate(new Date());
+  const doc_data = removeUndefinedFields({
+    name: data.name,
+    icon: data.icon,
+    sortOrder: data.sortOrder ?? 0,
+    active: data.active ?? true,
+    createdAt: now,
+    updatedAt: now,
   });
+  const ref = await addDoc(catsCol(branchId), doc_data);
+  return fromFirestore(ref.id, { ...doc_data, createdAt: now, updatedAt: now });
 };
 
-const fromFirestoreCategory = (id: string, data: Record<string, unknown>): Category => {
-  return {
-    id,
-    name: String(data.name ?? ''),
-    icon: String(data.icon ?? ''),
-    sortOrder: data.sortOrder ? Number(data.sortOrder) : undefined,
-    active: Boolean(data.active ?? true),
-    createdAt: toDate(data.createdAt),
-    updatedAt: toDate(data.updatedAt),
-  };
-};
-
-export const createCategory = async (categoryData: CategoryInput): Promise<Category> => {
-  const normalizedCategory = normalizeCategoryForFirestore(categoryData);
-  const docRef = await addDoc(collection(db, CATEGORIES_COLLECTION), normalizedCategory);
-  return fromFirestoreCategory(docRef.id, normalizedCategory);
-};
-
-export const updateCategory = async (categoryId: string, categoryData: Partial<CategoryInput>): Promise<void> => {
-  const updateData: Partial<FirestoreCategoryData> = removeUndefinedFields({
-    ...(categoryData.name !== undefined && { name: categoryData.name }),
-    ...(categoryData.icon !== undefined && { icon: categoryData.icon }),
-    ...(categoryData.sortOrder !== undefined && { sortOrder: categoryData.sortOrder }),
-    ...(categoryData.active !== undefined && { active: categoryData.active }),
+export const updateCategory = async (
+  branchId: string,
+  categoryId: string,
+  data: Partial<CategoryInput>,
+): Promise<void> => {
+  const update = removeUndefinedFields({
+    ...(data.name      !== undefined && { name: data.name }),
+    ...(data.icon      !== undefined && { icon: data.icon }),
+    ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),
+    ...(data.active    !== undefined && { active: data.active }),
     updatedAt: Timestamp.fromDate(new Date()),
   });
-  await updateDoc(doc(db, CATEGORIES_COLLECTION, categoryId), updateData);
+  await updateDoc(catDoc(branchId, categoryId), update);
 };
 
-export const deleteCategory = async (categoryId: string): Promise<void> => {
-  await deleteDoc(doc(db, CATEGORIES_COLLECTION, categoryId));
+export const deleteCategory = async (branchId: string, categoryId: string): Promise<void> => {
+  await deleteDoc(catDoc(branchId, categoryId));
 };
+
+// ─── Realtime subscription ────────────────────────────────────────────────────
 
 export const subscribeToCategories = (
-  callback: (categories: Category[]) => void,
-  onError?: (error: Error) => void,
+  branchId: string,
+  callback: (cats: Category[]) => void,
+  onError?: (err: Error) => void,
 ) => {
-  const categoriesQuery = query(collection(db, CATEGORIES_COLLECTION), orderBy('sortOrder', 'asc'));
-
+  const q = query(catsCol(branchId), orderBy('sortOrder', 'asc'));
   return onSnapshot(
-    categoriesQuery,
-    snapshot => {
-      callback(snapshot.docs.map(catDoc => fromFirestoreCategory(catDoc.id, catDoc.data())));
-    },
-    error => onError?.(error),
+    q,
+    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
+    err => onError?.(err),
   );
 };
 
-export const getCategories = async (): Promise<Category[]> => {
-  const categoriesQuery = query(collection(db, CATEGORIES_COLLECTION), orderBy('sortOrder', 'asc'));
-  const snapshot = await getDocs(categoriesQuery);
-  return snapshot.docs.map(catDoc => fromFirestoreCategory(catDoc.id, catDoc.data()));
+export const getCategories = async (branchId: string): Promise<Category[]> => {
+  const snap = await getDocs(query(catsCol(branchId), orderBy('sortOrder', 'asc')));
+  return snap.docs.map(d => fromFirestore(d.id, d.data()));
 };

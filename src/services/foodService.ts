@@ -1,3 +1,12 @@
+/**
+ * foodService.ts
+ * ──────────────
+ * Firestore CRUD for foods nested under:
+ *   /branches/{branchId}/foods/{foodId}
+ *
+ * branchId is always required — comes from userProfile.branchId via AuthContext.
+ * Includes input validation and retry logic.
+ */
 import {
   addDoc,
   collection,
@@ -13,107 +22,145 @@ import {
 import { db } from '@/lib/firebase';
 import { MenuItem } from '@/types/kiosk';
 import { removeUndefinedFields } from '@/lib/firestoreUtils';
+import { withRetry } from '@/lib/retryQueue';
 
-const FOODS_COLLECTION = 'foods';
+// ─── Input validation ─────────────────────────────────────────────────────────
 
-type FoodInput = Omit<MenuItem, 'id'> | MenuItem;
-type FirestoreFoodData = Omit<MenuItem, 'id'> & {
-  categoryId: string;
-  categoryName?: string;
-  imageUrl: string;
-  model3dUrl?: string;
-  arEnabled: boolean;
-  preparationTime?: number;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
+function validateFoodInput(food: Omit<MenuItem, 'id'>): void {
+  if (!food.name || food.name.trim().length === 0) {
+    throw new Error('Taom nomi majburiy');
+  }
+  if (food.name.length > 100) {
+    throw new Error('Taom nomi 100 ta belgidan ko\'p bo\'lmasligi kerak');
+  }
+  if (typeof food.price !== 'number' || food.price < 0) {
+    throw new Error('Narx musbat son bo\'lishi kerak');
+  }
+  if (food.price > 999999) {
+    throw new Error('Narx haddan tashqari katta');
+  }
+  if (!food.category || food.category.trim().length === 0) {
+    throw new Error('Kategoriya majburiy');
+  }
+}
 
-const toDate = (value: unknown): Date => {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
-  return new Date();
-};
+// ─── Path helper ──────────────────────────────────────────────────────────────
 
-const normalizeFoodForFirestore = (foodData: FoodInput): FirestoreFoodData => {
-  const now = new Date();
-  const createdAt = foodData.createdAt ? toDate(foodData.createdAt) : now;
+const foodsCol = (branchId: string) =>
+  collection(db, 'branches', branchId, 'foods');
 
-  return removeUndefinedFields({
-    name: foodData.name,
-    description: foodData.description,
-    price: foodData.price,
-    categoryId: foodData.category,
-    categoryName: foodData.category,
-    imageUrl: foodData.image,
-    model3dUrl: foodData.modelUrl,
-    arEnabled: foodData.hasAR ?? false,
-    preparationTime: 10,
-    available: foodData.available ?? true,
-    ingredients: foodData.ingredients,
-    createdAt: Timestamp.fromDate(createdAt),
+const foodDoc = (branchId: string, foodId: string) =>
+  doc(db, 'branches', branchId, 'foods', foodId);
+
+// ─── Serialisation ────────────────────────────────────────────────────────────
+
+const fromFirestore = (id: string, data: Record<string, unknown>): MenuItem => ({
+  id,
+  name: String(data.name ?? ''),
+  description: data.description ? String(data.description) : undefined,
+  price: Number(data.price ?? 0),
+  image: String(data.imageUrl ?? ''),
+  category: String(data.categoryId ?? ''),
+  modelUrl: data.model3dUrl ? String(data.model3dUrl) : undefined,
+  hasAR: Boolean(data.arEnabled ?? false),
+  available: Boolean(data.available ?? true),
+  ingredients: Array.isArray(data.ingredients) ? data.ingredients.map(String) : undefined,
+});
+
+const toFirestore = (food: Omit<MenuItem, 'id'>, now = new Date()) =>
+  removeUndefinedFields({
+    name: food.name.trim(),
+    description: food.description?.trim(),
+    price: food.price,
+    categoryId: food.category.trim(),
+    imageUrl: food.image,
+    model3dUrl: food.modelUrl,
+    arEnabled: food.hasAR ?? false,
+    available: food.available ?? true,
+    ingredients: food.ingredients,
+    createdAt: Timestamp.fromDate(now),
     updatedAt: Timestamp.fromDate(now),
   });
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+export const createFood = async (
+  branchId: string,
+  foodData: Omit<MenuItem, 'id'>,
+): Promise<MenuItem> => {
+  if (!branchId) throw new Error('branchId majburiy');
+  
+  validateFoodInput(foodData);
+  const data = toFirestore(foodData);
+  
+  const ref = await withRetry(
+    () => addDoc(foodsCol(branchId), data),
+    { maxAttempts: 3 }
+  );
+  return fromFirestore(ref.id, data);
 };
 
-const fromFirestoreFood = (id: string, data: Record<string, unknown>): MenuItem => {
-  return {
-    id,
-    name: String(data.name ?? ''),
-    description: data.description ? String(data.description) : undefined,
-    price: Number(data.price ?? 0),
-    image: String(data.imageUrl ?? ''),
-    category: String(data.categoryId ?? ''),
-    modelUrl: data.model3dUrl ? String(data.model3dUrl) : undefined,
-    hasAR: Boolean(data.arEnabled ?? false),
-    available: Boolean(data.available ?? true),
-    ingredients: Array.isArray(data.ingredients) ? data.ingredients.map(String) : undefined,
-  };
-};
+export const updateFood = async (
+  branchId: string,
+  foodId: string,
+  foodData: Partial<Omit<MenuItem, 'id'>>,
+): Promise<void> => {
+  if (!branchId) throw new Error('branchId majburiy');
+  if (!foodId) throw new Error('foodId majburiy');
+  
+  // Validate only provided fields
+  if (foodData.name !== undefined && foodData.name.length > 0) {
+    if (foodData.name.trim().length === 0) throw new Error('Taom nomi bo\'sh bo\'lmasligi kerak');
+  }
+  if (foodData.price !== undefined) {
+    if (foodData.price < 0) throw new Error('Narx manfiy bo\'lmasligi kerak');
+  }
 
-export const createFood = async (foodData: FoodInput): Promise<MenuItem> => {
-  const normalizedFood = normalizeFoodForFirestore(foodData);
-  const docRef = await addDoc(collection(db, FOODS_COLLECTION), normalizedFood);
-  return fromFirestoreFood(docRef.id, normalizedFood);
-};
-
-export const updateFood = async (foodId: string, foodData: Partial<FoodInput>): Promise<void> => {
-  const updateData: Partial<FirestoreFoodData> = removeUndefinedFields({
-    ...(foodData.name !== undefined && { name: foodData.name }),
-    ...(foodData.description !== undefined && { description: foodData.description }),
-    ...(foodData.price !== undefined && { price: foodData.price }),
-    ...(foodData.category !== undefined && { categoryId: foodData.category, categoryName: foodData.category }),
-    ...(foodData.image !== undefined && { imageUrl: foodData.image }),
-    ...(foodData.modelUrl !== undefined && { model3dUrl: foodData.modelUrl }),
-    ...(foodData.hasAR !== undefined && { arEnabled: foodData.hasAR }),
-    ...(foodData.available !== undefined && { available: foodData.available }),
+  const update = removeUndefinedFields({
+    ...(foodData.name        !== undefined && { name: foodData.name.trim() }),
+    ...(foodData.description !== undefined && { description: foodData.description?.trim() }),
+    ...(foodData.price       !== undefined && { price: foodData.price }),
+    ...(foodData.category    !== undefined && { categoryId: foodData.category.trim() }),
+    ...(foodData.image       !== undefined && { imageUrl: foodData.image }),
+    ...(foodData.modelUrl    !== undefined && { model3dUrl: foodData.modelUrl }),
+    ...(foodData.hasAR       !== undefined && { arEnabled: foodData.hasAR }),
+    ...(foodData.available   !== undefined && { available: foodData.available }),
     ...(foodData.ingredients !== undefined && { ingredients: foodData.ingredients }),
     updatedAt: Timestamp.fromDate(new Date()),
   });
-  await updateDoc(doc(db, FOODS_COLLECTION, foodId), updateData);
-};
 
-export const deleteFood = async (foodId: string): Promise<void> => {
-  await deleteDoc(doc(db, FOODS_COLLECTION, foodId));
-};
-
-export const subscribeToFoods = (
-  callback: (foods: MenuItem[]) => void,
-  onError?: (error: Error) => void,
-) => {
-  const foodsQuery = query(collection(db, FOODS_COLLECTION), orderBy('createdAt', 'desc'));
-
-  return onSnapshot(
-    foodsQuery,
-    snapshot => {
-      callback(snapshot.docs.map(foodDoc => fromFirestoreFood(foodDoc.id, foodDoc.data())));
-    },
-    error => onError?.(error),
+  await withRetry(
+    () => updateDoc(foodDoc(branchId, foodId), update),
+    { maxAttempts: 3 }
   );
 };
 
-export const getFoods = async (): Promise<MenuItem[]> => {
-  const foodsQuery = query(collection(db, FOODS_COLLECTION), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(foodsQuery);
-  return snapshot.docs.map(foodDoc => fromFirestoreFood(foodDoc.id, foodDoc.data()));
+export const deleteFood = async (branchId: string, foodId: string): Promise<void> => {
+  if (!branchId) throw new Error('branchId majburiy');
+  if (!foodId) throw new Error('foodId majburiy');
+
+  await withRetry(
+    () => deleteDoc(foodDoc(branchId, foodId)),
+    { maxAttempts: 3 }
+  );
+};
+
+// ─── Realtime subscription ────────────────────────────────────────────────────
+
+export const subscribeToFoods = (
+  branchId: string,
+  callback: (foods: MenuItem[]) => void,
+  onError?: (err: Error) => void,
+) => {
+  const q = query(foodsCol(branchId), orderBy('createdAt', 'desc'));
+  return onSnapshot(
+    q,
+    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
+    err => onError?.(err),
+  );
+};
+
+export const getFoods = async (branchId: string): Promise<MenuItem[]> => {
+  const snap = await getDocs(query(foodsCol(branchId), orderBy('createdAt', 'desc')));
+  return snap.docs.map(d => fromFirestore(d.id, d.data()));
 };

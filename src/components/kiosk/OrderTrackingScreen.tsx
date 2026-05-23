@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 
 interface OrderTrackingScreenProps {
   order: Order;
+  branchId: string;
   onBack: () => void;
   onNewOrder: () => void;
 }
@@ -42,13 +43,14 @@ const statusIcons = {
   served: Check,
 };
 
-export function OrderTrackingScreen({ order, onBack, onNewOrder }: OrderTrackingScreenProps) {
+export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: OrderTrackingScreenProps) {
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(order);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToOrder(
+      branchId,
       order.id,
       nextOrder => {
         setTrackedOrder(nextOrder);
@@ -63,7 +65,7 @@ export function OrderTrackingScreen({ order, onBack, onNewOrder }: OrderTracking
     );
 
     return unsubscribe;
-  }, [order.id]);
+  }, [branchId, order.id]);
 
   if (loading) {
     return (
@@ -102,7 +104,7 @@ export function OrderTrackingScreen({ order, onBack, onNewOrder }: OrderTracking
   const paymentPaid = trackedOrder.paymentStatus !== 'unpaid';
 
   const handleRefresh = async () => {
-    setTrackedOrder(await getOrderById(trackedOrder.id) ?? trackedOrder);
+    setTrackedOrder(await getOrderById(branchId, trackedOrder.id) ?? trackedOrder);
   };
 
   return (

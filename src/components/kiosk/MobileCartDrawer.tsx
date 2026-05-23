@@ -1,4 +1,4 @@
-import { CartItem, ServiceType } from '@/types/kiosk';
+import { CartItem, OrderType, ServiceType } from '@/types/kiosk';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Minus, Trash2, ShoppingCart, X, User, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,11 +14,14 @@ import {
 
 interface MobileCartDrawerProps {
   items: CartItem[];
+  orderType: OrderType;
   onUpdateQuantity: (id: string, quantity: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: () => void;
   serviceType: ServiceType;
   onServiceTypeChange: (type: ServiceType) => void;
+  checkoutDisabled?: boolean;
+  disabledMessage?: string;
 }
 
 const serviceTranslations = {
@@ -34,11 +37,14 @@ const serviceTranslations = {
 
 export function MobileCartDrawer({ 
   items, 
+  orderType,
   onUpdateQuantity, 
   onRemoveItem, 
   onCheckout,
   serviceType,
   onServiceTypeChange,
+  checkoutDisabled = false,
+  disabledMessage,
 }: MobileCartDrawerProps) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
@@ -49,7 +55,7 @@ export function MobileCartDrawer({
     <Drawer>
       <DrawerTrigger asChild>
         <Button
-          className="fixed bottom-4 right-4 left-4 h-16 rounded-2xl bg-primary hover:bg-primary/90 shadow-button flex items-center justify-between px-6 z-40 md:hidden"
+          className="fixed bottom-4 right-4 left-4 h-16 rounded-2xl bg-primary hover:bg-primary/90 shadow-button flex items-center justify-between px-6 z-40 lg:hidden"
         >
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -151,7 +157,7 @@ export function MobileCartDrawer({
         </div>
 
         {/* Service Type Selection */}
-        {items.length > 0 && (
+        {items.length > 0 && orderType !== 'take-out' && (
           <div className="px-4 py-3 border-t border-border">
             <p className="text-sm font-medium text-muted-foreground mb-3">Xizmat turi</p>
             <div className="grid grid-cols-2 gap-3">
@@ -202,12 +208,15 @@ export function MobileCartDrawer({
           <DrawerClose asChild>
             <Button
               onClick={onCheckout}
-              disabled={items.length === 0}
+              disabled={items.length === 0 || checkoutDisabled}
               className="w-full h-14 text-lg font-semibold rounded-2xl bg-primary hover:bg-primary/90 shadow-button disabled:opacity-50 disabled:shadow-none mt-2"
             >
               Buyurtma berish
             </Button>
           </DrawerClose>
+          {checkoutDisabled && disabledMessage && (
+            <p className="text-xs text-center text-muted-foreground">{disabledMessage}</p>
+          )}
         </div>
       </DrawerContent>
     </Drawer>

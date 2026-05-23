@@ -11,7 +11,7 @@ export interface MenuItem {
   hasAR?: boolean;
 }
 
-export type Category = 'tacos' | 'burgers' | 'crepes' | 'drinks' | 'desserts' | 'chicken';
+export type Category = string;
 
 export interface CartItem extends MenuItem {
   quantity: number;
@@ -39,6 +39,7 @@ export interface Order {
   tableNumber?: number;
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
+  shiftId?: string;
 }
 
 export type Language = 'uz' | 'en' | 'ru';

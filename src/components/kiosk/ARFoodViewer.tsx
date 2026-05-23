@@ -342,7 +342,9 @@ export function ARFoodViewer({ name, modelUrl, onClose }: ARFoodViewerProps) {
       delete pointers[e.pointerId];
       try {
         (e.target as Element).releasePointerCapture?.(e.pointerId);
-      } catch {}
+      } catch {
+        // Pointer capture may already be released by the browser.
+      }
     };
 
     mv.addEventListener('pointerdown', onPointerDown as any);
@@ -416,7 +418,6 @@ export function ARFoodViewer({ name, modelUrl, onClose }: ARFoodViewerProps) {
 
           {/* ---- model-viewer with native AR ---- */}
           <section className="relative min-h-[420px] flex-1 overflow-hidden rounded-3xl border border-border bg-card shadow-card">
-            {/* @ts-ignore - model-viewer custom element */}
             <model-viewer
               ref={modelViewerRef}
               src={modelUrl}

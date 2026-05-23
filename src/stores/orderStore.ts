@@ -1,40 +1,41 @@
+/**
+ * orderStore.ts
+ * ─────────────
+ * Thin re-export layer over orderService for backwards-compat with page imports.
+ * All functions now require branchId (from auth context).
+ */
 import { Order } from '@/types/kiosk';
 import {
   createOrder,
-  getOrderById as getFirestoreOrderById,
-  getOrders as getFirestoreOrders,
+  getOrderById as _getOrderById,
+  getOrders as _getOrders,
   subscribeToOrder,
   subscribeToOrders,
-  updateOrderStatus as updateFirestoreOrderStatus,
+  updateOrderStatus as _updateOrderStatus,
   updatePaymentStatus,
 } from '@/services/orderService';
 
-export const getOrders = async (): Promise<Order[]> => {
-  return getFirestoreOrders();
-};
+export const getOrders = (branchId: string) => _getOrders(branchId);
 
-export const getOrderById = async (orderId: string): Promise<Order | null> => {
-  return getFirestoreOrderById(orderId);
-};
+export const getOrderById = (branchId: string, orderId: string) =>
+  _getOrderById(branchId, orderId);
 
-export const saveOrder = async (order: Order): Promise<Order> => {
-  return createOrder(order);
-};
+export const saveOrder = (branchId: string, order: Omit<Order, 'id'>): Promise<Order> =>
+  createOrder(branchId, order);
 
-export const updateOrderStatus = async (orderId: string, status: Order['status']): Promise<void> => {
-  return updateFirestoreOrderStatus(orderId, status);
-};
+export const updateOrderStatus = (
+  branchId: string,
+  orderId: string,
+  status: Order['status'],
+) => _updateOrderStatus(branchId, orderId, status);
 
-export const updateOrderPaymentStatus = async (
+export const updateOrderPaymentStatus = (
+  branchId: string,
   orderId: string,
   paymentStatus: Order['paymentStatus'],
-): Promise<void> => {
-  if (!paymentStatus) return;
-  return updatePaymentStatus(orderId, paymentStatus);
-};
-
-export const clearOrders = (): void => {
-  console.warn('clearOrders is not supported for Firestore-backed orders.');
+) => {
+  if (!paymentStatus) return Promise.resolve();
+  return updatePaymentStatus(branchId, orderId, paymentStatus);
 };
 
 export { subscribeToOrder, subscribeToOrders };

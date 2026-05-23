@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function role() {
+      return signedIn() ? userProfile().role : null;
+    }
+
+    function userBranchId() {
+      return signedIn() ? userProfile().branchId : null;
+    }
+
+    function isSuperAdmin() {
+      return signedIn() && role() == 'superadmin';
+    }
+
+    function isKitchen(branchId) {
+      return signedIn() && role() == 'kitchen' && userBranchId() == branchId;
+    }
+
+    function isMenu(branchId) {
+      return signedIn() && role() == 'menu' && userBranchId() == branchId;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow create: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow update, delete: if isSuperAdmin();
+    }
+
+    match /branches/{branchId} {
+      allow read: if isSuperAdmin() || isKitchen(branchId) || isMenu(branchId);
+      allow create, update, delete: if isSuperAdmin();
+
+      match /foods/{foodId} {
+        allow read: if isSuperAdmin() || isKitchen(branchId) || isMenu(branchId);
+        allow create, update, delete: if isSuperAdmin() || isKitchen(branchId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if isSuperAdmin() ||
+          isKitchen(branchId) ||
+          (isMenu(branchId) && resource.data.menuUserId == request.auth.uid);
+
+        allow create: if isMenu(branchId) &&
+          request.resource.data.keys().hasAll(['items', 'total', 'createdAt', 'menuUserId']) &&
+          request.resource.data.menuUserId == request.auth.uid;
+
+        allow update: if isSuperAdmin() ||
+          (isKitchen(branchId) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          (isMenu(branchId) &&
+            resource.data.menuUserId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus', 'paymentMethod', 'updatedAt']));
+
+        allow delete: if false;
+      }
+
+      match /tables/{tableId} {
+        allow read: if isSuperAdmin() || isKitchen(branchId) || isMenu(branchId);
+        allow create, update, delete: if isSuperAdmin() || isKitchen(branchId);
+      }
+
+      match /categories/{categoryId} {
+        allow read: if isSuperAdmin() || isKitchen(branchId) || isMenu(branchId);
+        allow create, update, delete: if isSuperAdmin() || isKitchen(branchId);
+      }
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if isSuperAdmin() ||
+        (signedIn() && role() in ['kitchen', 'menu'] && resource.data.branchId == userBranchId());
+
+      allow create: if signedIn() &&
+        role() == 'kitchen' &&
+        request.resource.data.branchId == userBranchId();
+
+      allow update: if isSuperAdmin() ||
+        (signedIn() && role() == 'kitchen' && resource.data.branchId == userBranchId()) ||
+        (signedIn() &&
+          role() == 'menu' &&
+          resource.data.branchId == userBranchId() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'totalOrders',
+            'totalRevenue',
+            'paymentSummary',
+            'soldItemsSummary'
+          ]));
+
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

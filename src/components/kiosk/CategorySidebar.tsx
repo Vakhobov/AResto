@@ -11,7 +11,7 @@ interface CategoryItem {
 interface CategorySidebarProps {
   activeCategory: Category;
   onCategoryChange: (category: Category) => void;
-  categories?: CategoryItem[];
+  categories?: ReadonlyArray<CategoryItem>;
 }
 
 export function CategorySidebar({ activeCategory, onCategoryChange, categories: propCategories }: CategorySidebarProps) {
@@ -26,7 +26,7 @@ export function CategorySidebar({ activeCategory, onCategoryChange, categories: 
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-28 min-h-screen bg-secondary/50 backdrop-blur-sm border-r border-border flex-col py-6">
+      <aside className="hidden lg:flex w-28 min-h-screen bg-secondary/50 backdrop-blur-sm border-r border-border flex-col py-6">
         <div className="flex flex-col gap-2 px-2">
           {displayCategories.map((category, index) => {
             const isActive = activeCategory === category.id;
@@ -65,7 +65,7 @@ export function CategorySidebar({ activeCategory, onCategoryChange, categories: 
       </aside>
 
       {/* Mobile Horizontal Scroll */}
-      <div className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
+      <div className="lg:hidden sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex gap-2 p-3 overflow-x-auto scrollbar-hide">
           {displayCategories.map((category) => {
             const isActive = activeCategory === category.id;
