@@ -125,15 +125,18 @@ const Kitchen = () => {
     navigate('/login', { replace: true });
   };
 
+  const activeStatuses: CanonicalOrderStatus[] = ['new', 'preparing', 'ready'];
+  const activeOrders = orders.filter(order => activeStatuses.includes(normalizeOrderStatus(order.status)));
+
   const filteredOrders = statusFilter === 'all'
-    ? orders
-    : orders.filter(order => normalizeOrderStatus(order.status) === statusFilter);
+    ? activeOrders
+    : activeOrders.filter(order => normalizeOrderStatus(order.status) === statusFilter);
 
-  const newCount       = orders.filter(o => normalizeOrderStatus(o.status) === 'new').length;
-  const preparingCount = orders.filter(o => normalizeOrderStatus(o.status) === 'preparing').length;
-  const readyCount     = orders.filter(o => normalizeOrderStatus(o.status) === 'ready').length;
+  const newCount       = activeOrders.filter(o => normalizeOrderStatus(o.status) === 'new').length;
+  const preparingCount = activeOrders.filter(o => normalizeOrderStatus(o.status) === 'preparing').length;
+  const readyCount     = activeOrders.filter(o => normalizeOrderStatus(o.status) === 'ready').length;
 
-  const filters: Array<'all' | CanonicalOrderStatus> = ['all', 'new', 'preparing', 'ready', 'served'];
+  const filters: Array<'all' | CanonicalOrderStatus> = ['all', 'new', 'preparing', 'ready'];
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -165,8 +168,8 @@ const Kitchen = () => {
               size="sm"
             >
               {filter === 'all'
-                ? `Hammasi (${orders.length})`
-                : `${orderStatusLabelsUz[filter]} (${orders.filter(o => normalizeOrderStatus(o.status) === filter).length})`}
+                ? `Hammasi (${activeOrders.length})`
+                : `${orderStatusLabelsUz[filter]} (${activeOrders.filter(o => normalizeOrderStatus(o.status) === filter).length})`}
             </Button>
           ))}
         </div>

@@ -61,7 +61,7 @@ export function PaymentScreen({
   const [processing, setProcessing] = useState(false);
 
   const isQrMethod = selectedMethod ? qrMethods.includes(selectedMethod) : false;
-  const safeOrderNumber = orderNumber || Math.floor(100 + Math.random() * 900);
+  const safeOrderNumber = orderNumber || 1;
 
   const qrData = useMemo(() => {
     if (!selectedMethod || !isQrMethod) return '';

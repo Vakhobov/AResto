@@ -16,8 +16,10 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   Timestamp,
   updateDoc,
+  increment,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Order, OrderStatus, PaymentStatus } from '@/types/kiosk';
@@ -39,6 +41,9 @@ const ordersCol = (branchId: string) =>
 
 const orderDocRef = (branchId: string, orderId: string) =>
   doc(db, 'branches', branchId, 'orders', orderId);
+
+const shiftDocRef = (shiftId: string) =>
+  doc(db, 'shifts', shiftId);
 
 // ─── Serialisation ────────────────────────────────────────────────────────────
 
@@ -90,6 +95,26 @@ const toFirestore = (order: Omit<Order, 'id'>, now = new Date()) =>
     shiftId: order.shiftId,
   });
 
+const buildShiftOrderUpdate = (
+  orderTotal: number,
+  paymentMethod: string,
+  items: Order['items'],
+) => {
+  const soldIncrements: Record<string, ReturnType<typeof increment>> = {};
+
+  for (const item of items) {
+    const safeName = item.name.replace(/[.[\]*/~]/g, '_');
+    soldIncrements[`soldItemsSummary.${safeName}`] = increment(item.quantity);
+  }
+
+  return {
+    totalOrders: increment(1),
+    totalRevenue: increment(orderTotal),
+    [`paymentSummary.${paymentMethod}`]: increment(orderTotal),
+    ...soldIncrements,
+  };
+};
+
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export const createOrder = async (
@@ -106,21 +131,44 @@ export const createOrder = async (
   }
 
   const orderWithShift = { ...orderData, shiftId: activeShift.id };
-  const data = toFirestore(orderWithShift);
   
   try {
-    // Try to create with retry logic for network issues
-    const ref = await withRetry(
-      () => addDoc(ordersCol(branchId), data),
+    // Create the order and bump shift totals atomically so order numbers reset
+    // per opened shift and keep increasing by one.
+    const savedOrder = await withRetry(
+      () => runTransaction(db, async transaction => {
+        const shiftRef = shiftDocRef(activeShift.id);
+        const shiftSnap = await transaction.get(shiftRef);
+
+        if (!shiftSnap.exists()) {
+          throw new Error("Smena topilmadi. Qayta urinib ko'ring.");
+        }
+
+        const shiftData = shiftSnap.data();
+        if (shiftData.branchId !== branchId || shiftData.status !== 'open') {
+          throw new Error("Smena ochilmagan. Oshxona hozir buyurtma qabul qilmaydi.");
+        }
+
+        const orderNumber = Number(shiftData.totalOrders ?? 0) + 1;
+        const numberedOrder = { ...orderWithShift, orderNumber };
+        const data = toFirestore(numberedOrder);
+        const ref = doc(ordersCol(branchId));
+
+        transaction.set(ref, data);
+        transaction.update(
+          shiftRef,
+          buildShiftOrderUpdate(
+            numberedOrder.total,
+            numberedOrder.paymentMethod ?? 'cash',
+            numberedOrder.items,
+          ),
+        );
+
+        return fromFirestore(ref.id, data);
+      }),
       { maxAttempts: 3, initialDelayMs: 1000 },
     );
-    await updateShiftOnOrder(
-      activeShift.id,
-      orderData.total,
-      orderData.paymentMethod ?? 'cash',
-      orderData.items,
-    );
-    return fromFirestore(ref.id, data);
+    return savedOrder;
   } catch (err: any) {
     // If error is network-related, queue offline
     if (isRetryableError(err) || err.message.includes('offline')) {

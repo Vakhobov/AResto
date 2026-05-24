@@ -156,7 +156,7 @@ const Index = () => {
       });
       return;
     }
-    setPendingOrderNumber(prev => prev ?? Math.floor(100 + Math.random() * 900));
+    setPendingOrderNumber(prev => prev ?? activeShift.totalOrders + 1);
     setScreen('payment');
   }, [activeShift, cart.length, shiftLoading, toast]);
 
@@ -186,7 +186,7 @@ const Index = () => {
     const subtotal    = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const serviceFee  = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
     const total       = subtotal + serviceFee;
-    const orderNumber = pendingOrderNumber ?? Math.floor(100 + Math.random() * 900);
+    const orderNumber = pendingOrderNumber ?? activeShift.totalOrders + 1;
     const paymentStatus = method === 'cash' ? 'unpaid' : 'paid';
 
     const order: Omit<Order, 'id'> = {
