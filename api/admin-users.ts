@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const metaEnv = (import.meta as any).env as Record<string, string | undefined>;
-const supabaseUrl = metaEnv.VITE_SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-const serviceRoleKey = metaEnv.SUPABASE_SERVICE_ROLE_KEY;
+// Use server-side environment variables in Vercel functions.
+// Prefer non-VITE names (Supabase integration sets `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`).
+const rawSupabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
 
 const adminClient = () => {
   if (!supabaseUrl || !serviceRoleKey) {
