@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const metaEnv = (import.meta as any).env as Record<string, string | undefined>;
+const supabaseUrl = metaEnv.VITE_SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+const serviceRoleKey = metaEnv.SUPABASE_SERVICE_ROLE_KEY;
 
 const adminClient = () => {
   if (!supabaseUrl || !serviceRoleKey) {
