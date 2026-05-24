@@ -48,7 +48,9 @@ const assertSuperAdmin = async (req: any, supabase: ReturnType<typeof adminClien
 const findUserByEmail = async (supabase: ReturnType<typeof adminClient>, email: string) => {
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (error) throw error;
-  return data.users.find(user => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
+
+  const users = data?.users ?? [];
+  return users.find(user => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
 };
 
 const seedSuperAdmin = async (supabase: ReturnType<typeof adminClient>, email: string, password: string) => {
