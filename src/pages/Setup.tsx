@@ -1,87 +1,57 @@
 /**
- * Setup.tsx
- * ─────────
- * One-time SuperAdmin account creation page.
- * Visit /setup to create the superadmin@aresto.com account.
- * Once created, this page will show a success state.
+ * Setup.tsx  — Supabase version
+ * ──────────────────────────────
+ * One-time SuperAdmin seeding via /api/admin-users.
+ * Visit /setup to create superadmin@aresto.com
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, CheckCircle2, ArrowLeft, Loader2 } from 'lucide-react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+
+type State = 'idle' | 'loading' | 'done' | 'exists' | 'error';
 
 const SUPERADMIN_EMAIL    = 'superadmin@aresto.com';
 const SUPERADMIN_PASSWORD = 'Admin1234!';
 
-type State = 'idle' | 'loading' | 'done' | 'exists' | 'error';
-
 const Setup = () => {
   const navigate = useNavigate();
-  const [state, setState]   = useState<State>('idle');
+  const [state, setState]     = useState<State>('idle');
   const [message, setMessage] = useState('');
 
   const handleSetup = async () => {
     setState('loading');
     try {
-      // 1. Try creating the Firebase Auth account
-      let uid: string;
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD);
-        uid = cred.user.uid;
-      } catch (authErr: any) {
-        if (authErr.code === 'auth/email-already-in-use') {
-          // Auth account exists — sign in to get the UID
-          const cred = await signInWithEmailAndPassword(auth, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD);
-          uid = cred.user.uid;
-
-          // Check Firestore doc
-          const snap = await getDoc(doc(db, 'users', uid));
-          if (snap.exists() && snap.data()?.role === 'superadmin') {
-            setState('exists');
-            setMessage('SuperAdmin akkaunt allaqachon mavjud. Kirish sahifasiga qayting va kiring.');
-            return;
-          }
-          // Auth exists but no Firestore doc — write it
-          await setDoc(doc(db, 'users', uid), {
-            email: SUPERADMIN_EMAIL,
-            role: 'superadmin',
-            branchId: null,
-            branchName: null,
-            createdAt: Timestamp.fromDate(new Date()),
-          });
-          setState('done');
-          setMessage('SuperAdmin Firestore profili tuzatildi. Endi kira olasiz!');
-          return;
-        }
-        throw authErr;
-      }
-
-      // 2. Write Firestore profile
-      await setDoc(doc(db, 'users', uid), {
-        email: SUPERADMIN_EMAIL,
-        role: 'superadmin',
-        branchId: null,
-        branchName: null,
-        createdAt: Timestamp.fromDate(new Date()),
+      const res = await fetch('/api/admin-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'seedSuperAdmin',
+          email: SUPERADMIN_EMAIL,
+          password: SUPERADMIN_PASSWORD,
+        }),
       });
 
-      setState('done');
-      setMessage('SuperAdmin muvaffaqiyatli yaratildi! Endi kirish sahifasiga o\'ting.');
+      let result;
+      try {
+        result = await res.json();
+      } catch (e) {
+        throw new Error(`API ishlamayapti (HTTP ${res.status}). Iltimos, terminalni to'xtatib "npm run dev:full" komandasi orqali qayta ishga tushiring.`);
+      }
+
+      if (!res.ok) throw new Error(result?.error ?? `HTTP ${res.status}`);
+
+      if (result?.exists) {
+        setState('exists');
+        setMessage('SuperAdmin allaqachon mavjud. Kirish sahifasiga qayting va kiring.');
+      } else {
+        setState('done');
+        setMessage('SuperAdmin muvaffaqiyatli yaratildi! Endi kirish sahifasiga oʻting.');
+      }
     } catch (err: any) {
       setState('error');
-      const code = err?.code ?? '';
-      if (code === 'auth/too-many-requests') {
-        setMessage("Firebase vaqtincha blokladi. 5-10 daqiqa kuting va qayta urinib ko'ring.");
-      } else {
-        setMessage(`Xato: ${err?.message ?? err}`);
-      }
+      setMessage(err?.message ?? 'Noma\'lum xato yuz berdi');
     }
   };
 
@@ -104,16 +74,15 @@ const Setup = () => {
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-8 shadow-lg space-y-5">
-          {/* Info box */}
           <div className="bg-secondary/30 border border-border rounded-xl p-4 space-y-2 text-sm">
             <p className="font-medium text-foreground">Yaratilajak akkaunt:</p>
             <div className="flex justify-between text-muted-foreground">
               <span>Email:</span>
-              <span className="font-mono text-foreground">{"SuperAdmin"}</span>
+              <span className="font-mono text-foreground">{SUPERADMIN_EMAIL}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Parol:</span>
-              <span className="font-mono text-foreground">{"Super Admin Password"}</span>
+              <span className="font-mono text-foreground">{SUPERADMIN_PASSWORD}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Rol:</span>
@@ -121,7 +90,6 @@ const Setup = () => {
             </div>
           </div>
 
-          {/* Result message */}
           {(state === 'done' || state === 'exists' || state === 'error') && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -161,7 +129,7 @@ const Setup = () => {
             </Button>
           )}
 
-          {state === 'idle' && (
+          {(state === 'idle' || state === 'error') && (
             <button
               onClick={() => navigate('/login')}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -170,13 +138,6 @@ const Setup = () => {
             </button>
           )}
         </div>
-
-        {state === 'error' && (
-          <p className="text-xs text-muted-foreground text-center mt-4">
-            Agar muammo davom etsa, Firebase Console → Authentication → Users da
-            akkauntni tekshiring
-          </p>
-        )}
       </motion.div>
     </div>
   );

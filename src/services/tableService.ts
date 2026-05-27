@@ -1,24 +1,10 @@
 /**
- * tableService.ts
- * ───────────────
- * Firestore CRUD for restaurant tables nested under:
- *   /branches/{branchId}/tables/{tableId}
+ * tableService.ts  — Supabase
+ * ────────────────────────────
+ * CRUD + realtime for the `restaurant_tables` table.
  */
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { removeUndefinedFields } from '@/lib/firestoreUtils';
+import { supabase } from '@/lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'inactive';
 
@@ -35,31 +21,17 @@ export interface RestaurantTable {
 
 type TableInput = Omit<RestaurantTable, 'id' | 'createdAt' | 'updatedAt'>;
 
-// ─── Path helpers ─────────────────────────────────────────────────────────────
+// ─── Row → domain ─────────────────────────────────────────────────────────────
 
-const tablesCol = (branchId: string) =>
-  collection(db, 'branches', branchId, 'tables');
-
-const tableDocRef = (branchId: string, tableId: string) =>
-  doc(db, 'branches', branchId, 'tables', tableId);
-
-// ─── Serialisation ────────────────────────────────────────────────────────────
-
-const toDate = (v: unknown): Date => {
-  if (v instanceof Timestamp) return v.toDate();
-  if (v instanceof Date) return v;
-  return new Date();
-};
-
-const fromFirestore = (id: string, data: Record<string, unknown>): RestaurantTable => ({
-  id,
-  number: Number(data.number ?? 0),
-  name: data.name ? String(data.name) : undefined,
-  status: (data.status as TableStatus) ?? 'available',
-  currentOrderId: data.currentOrderId ? String(data.currentOrderId) : undefined,
-  active: Boolean(data.active ?? true),
-  createdAt: toDate(data.createdAt),
-  updatedAt: toDate(data.updatedAt),
+const rowToTable = (row: any): RestaurantTable => ({
+  id: row.id,
+  number: Number(row.number),
+  name: row.name ?? undefined,
+  status: row.status as TableStatus,
+  currentOrderId: row.current_order_id ?? undefined,
+  active: Boolean(row.active),
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at),
 });
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -68,18 +40,21 @@ export const createTable = async (
   branchId: string,
   tableData: TableInput,
 ): Promise<RestaurantTable> => {
-  const now = Timestamp.fromDate(new Date());
-  const data = removeUndefinedFields({
-    number: tableData.number,
-    name: tableData.name,
-    status: tableData.status ?? 'available',
-    currentOrderId: tableData.currentOrderId,
-    active: tableData.active ?? true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const ref = await addDoc(tablesCol(branchId), data);
-  return fromFirestore(ref.id, data);
+  const { data, error } = await supabase
+    .from('restaurant_tables')
+    .insert({
+      branch_id: branchId,
+      number: tableData.number,
+      name: tableData.name ?? null,
+      status: tableData.status ?? 'available',
+      current_order_id: tableData.currentOrderId ?? null,
+      active: tableData.active ?? true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return rowToTable(data);
 };
 
 export const updateTable = async (
@@ -87,50 +62,58 @@ export const updateTable = async (
   tableId: string,
   tableData: Partial<TableInput>,
 ): Promise<void> => {
-  const update = removeUndefinedFields({
-    ...(tableData.number         !== undefined && { number: tableData.number }),
-    ...(tableData.name           !== undefined && { name: tableData.name }),
-    ...(tableData.status         !== undefined && { status: tableData.status }),
-    ...(tableData.currentOrderId !== undefined && { currentOrderId: tableData.currentOrderId }),
-    ...(tableData.active         !== undefined && { active: tableData.active }),
-    updatedAt: Timestamp.fromDate(new Date()),
-  });
-  await updateDoc(tableDocRef(branchId, tableId), update);
+  const update: Record<string, any> = {};
+  if (tableData.number         !== undefined) update.number           = tableData.number;
+  if (tableData.name           !== undefined) update.name             = tableData.name;
+  if (tableData.status         !== undefined) update.status           = tableData.status;
+  if (tableData.currentOrderId !== undefined) update.current_order_id = tableData.currentOrderId ?? null;
+  if (tableData.active         !== undefined) update.active           = tableData.active;
+
+  const { error } = await supabase
+    .from('restaurant_tables')
+    .update(update)
+    .eq('id', tableId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
 };
 
 export const deleteTable = async (branchId: string, tableId: string): Promise<void> => {
-  await deleteDoc(tableDocRef(branchId, tableId));
+  const { error } = await supabase
+    .from('restaurant_tables')
+    .delete()
+    .eq('id', tableId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
 };
 
-export const subscribeToTables = (
-  branchId: string,
-  callback: (tables: RestaurantTable[]) => void,
-  onError?: (err: Error) => void,
-) => {
-  const q = query(tablesCol(branchId), orderBy('number', 'asc'));
-  return onSnapshot(
-    q,
-    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
-    err => onError?.(err),
-  );
-};
+// ─── Queries ──────────────────────────────────────────────────────────────────
 
 export const getTables = async (branchId: string): Promise<RestaurantTable[]> => {
-  const snap = await getDocs(query(tablesCol(branchId), orderBy('number', 'asc')));
-  return snap.docs.map(d => fromFirestore(d.id, d.data()));
-};
+  const { data, error } = await supabase
+    .from('restaurant_tables')
+    .select('*')
+    .eq('branch_id', branchId)
+    .order('number', { ascending: true });
 
-// ─── Table lookup by number ───────────────────────────────────────────────────
+  if (error) throw error;
+  return (data ?? []).map(rowToTable);
+};
 
 const getTableByNumber = async (
   branchId: string,
   tableNumber: number,
 ): Promise<RestaurantTable | null> => {
-  const snap = await getDocs(
-    query(tablesCol(branchId), where('number', '==', tableNumber)),
-  );
-  if (snap.empty) return null;
-  return fromFirestore(snap.docs[0].id, snap.docs[0].data());
+  const { data, error } = await supabase
+    .from('restaurant_tables')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('number', tableNumber)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToTable(data) : null;
 };
 
 export const markTableOccupied = async (
@@ -138,8 +121,13 @@ export const markTableOccupied = async (
   tableNumber: number,
   orderId: string,
 ): Promise<void> => {
-  const table = await getTableByNumber(branchId, tableNumber);
-  if (table) await updateTable(branchId, table.id, { status: 'occupied', currentOrderId: orderId });
+  // Use the DB function for atomicity + RLS enforcement
+  const { error } = await supabase.rpc('mark_table_occupied', {
+    p_branch_id: branchId,
+    p_table_number: tableNumber,
+    p_order_id: orderId,
+  });
+  if (error) throw error;
 };
 
 export const markTableAvailable = async (
@@ -147,5 +135,34 @@ export const markTableAvailable = async (
   tableNumber: number,
 ): Promise<void> => {
   const table = await getTableByNumber(branchId, tableNumber);
-  if (table) await updateTable(branchId, table.id, { status: 'available', currentOrderId: undefined });
+  if (!table) return;
+  await updateTable(branchId, table.id, { status: 'available', currentOrderId: undefined });
+};
+
+// ─── Realtime subscription ────────────────────────────────────────────────────
+
+export const subscribeToTables = (
+  branchId: string,
+  callback: (tables: RestaurantTable[]) => void,
+  onError?: (err: Error) => void,
+): (() => void) => {
+  getTables(branchId).then(callback).catch(e => onError?.(e));
+
+  const channel: RealtimeChannel = supabase
+    .channel(`tables:${branchId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'restaurant_tables', filter: `branch_id=eq.${branchId}` },
+      async () => {
+        try {
+          const tables = await getTables(branchId);
+          callback(tables);
+        } catch (e) {
+          onError?.(e as Error);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };

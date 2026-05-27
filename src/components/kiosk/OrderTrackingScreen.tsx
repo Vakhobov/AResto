@@ -59,7 +59,7 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
       },
       subscriptionError => {
         console.error('Order tracking subscription failed:', subscriptionError);
-        setError("Buyurtmani yuklab bo'lmadi. Firebase sozlamalarini tekshiring.");
+        setError((subscriptionError as any)?.message || "Buyurtmani yuklab bo'lmadi.");
         setLoading(false);
       },
     );

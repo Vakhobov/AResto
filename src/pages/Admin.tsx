@@ -29,6 +29,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { ShiftProvider } from '@/context/ShiftContext';
+import { DiagnosticConsole } from '@/components/admin/DiagnosticConsole';
+
 
 const Admin = () => {
   const { userProfile, logout } = useAuth();
@@ -441,6 +443,7 @@ const Admin = () => {
             )}
           </AnimatePresence>
 
+          <DiagnosticConsole />
         </div>
       </div>
     </ShiftProvider>

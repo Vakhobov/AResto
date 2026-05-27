@@ -1,246 +1,131 @@
 /**
- * orderService.ts
- * ───────────────
- * Firestore CRUD for orders nested under:
- *   /branches/{branchId}/orders/{orderId}
- *
- * Realtime via onSnapshot — kitchen gets instant updates.
- * Includes retry logic for network resilience and offline support.
+ * orderService.ts  — Supabase
+ * ────────────────────────────
+ * CRUD + realtime for `orders` + `order_items` tables.
+ * createOrder calls the `create_order_with_items` DB function which:
+ *   - checks for an open shift
+ *   - atomically inserts order + items + bumps shift totals
  */
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  runTransaction,
-  Timestamp,
-  updateDoc,
-  increment,
-} from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
 import { Order, OrderStatus, PaymentStatus } from '@/types/kiosk';
 import { normalizeOrderStatus } from '@/lib/orderStatus';
-import { removeUndefinedDeep } from '@/lib/firestoreUtils';
-import { withRetry, isRetryableError } from '@/lib/retryQueue';
-import {
-  queueOrderOffline,
-  getQueuedOrders,
-  removeQueuedOrder,
-  incrementSyncAttempt,
-} from '@/lib/offlineQueue';
-import { getActiveShift, updateShiftOnOrder } from '@/services/shiftService';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
-// ─── Path helpers ─────────────────────────────────────────────────────────────
+// ─── Row → domain ─────────────────────────────────────────────────────────────
 
-const ordersCol = (branchId: string) =>
-  collection(db, 'branches', branchId, 'orders');
+const rowToOrder = (row: any): Order => ({
+  id: row.id,
+  orderNumber: Number(row.order_number ?? 0),
+  items: (row.order_items ?? []).map((oi: any) => ({
+    id: oi.food_id ?? oi.id,
+    name: oi.name,
+    price: Number(oi.price),
+    quantity: Number(oi.quantity),
+    image: oi.image_url ?? '',
+    category: oi.category_id ?? '',
+    description: oi.description ?? undefined,
+    ingredients: oi.ingredients ?? undefined,
+    modelUrl: oi.model_3d_url ?? undefined,
+    hasAR: Boolean(oi.ar_enabled),
+    available: true,
+  })),
+  subtotal: Number(row.subtotal ?? row.total),
+  serviceFee: Number(row.service_fee ?? 0),
+  total: Number(row.total ?? 0),
+  serviceType: (row.service_type ?? 'self-service') as Order['serviceType'],
+  createdAt: new Date(row.created_at),
+  status: normalizeOrderStatus(row.status),
+  orderType: (row.order_type ?? 'take-out') as Order['orderType'],
+  tableNumber: row.table_number ?? undefined,
+  paymentMethod: row.payment_method ?? undefined,
+  paymentStatus: (row.payment_status ?? 'unpaid') as PaymentStatus,
+  shiftId: row.shift_id ?? undefined,
+});
 
-const orderDocRef = (branchId: string, orderId: string) =>
-  doc(db, 'branches', branchId, 'orders', orderId);
+// ─── Queries ──────────────────────────────────────────────────────────────────
 
-const shiftDocRef = (shiftId: string) =>
-  doc(db, 'shifts', shiftId);
+const ordersQuery = (branchId: string) =>
+  supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('branch_id', branchId)
+    .order('created_at', { ascending: true });
 
-// ─── Serialisation ────────────────────────────────────────────────────────────
-
-const toDate = (v: unknown): Date => {
-  if (v instanceof Timestamp) return v.toDate();
-  if (v instanceof Date) return v;
-  if (typeof v === 'string' || typeof v === 'number') return new Date(v);
-  return new Date();
+export const getOrders = async (branchId: string): Promise<Order[]> => {
+  const { data, error } = await ordersQuery(branchId);
+  if (error) throw error;
+  return (data ?? []).map(rowToOrder);
 };
 
-const normalizePayment = (ps?: PaymentStatus): PaymentStatus => ps ?? 'unpaid';
+export const getOrderById = async (branchId: string, orderId: string): Promise<Order | null> => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('id', orderId)
+    .eq('branch_id', branchId)
+    .maybeSingle();
 
-const fromFirestore = (id: string, data: Record<string, unknown>): Order => {
-  const total = Number(data.total ?? 0);
-  return {
-    id,
-    orderNumber: Number(data.orderNumber ?? 0),
-    items: (data.items ?? []) as Order['items'],
-    subtotal: Number(data.subtotal ?? total),
-    serviceFee: Number(data.serviceFee ?? 0),
-    total,
-    serviceType: (data.serviceType ?? 'self-service') as Order['serviceType'],
-    createdAt: toDate(data.createdAt),
-    status: normalizeOrderStatus(data.status as OrderStatus | undefined),
-    orderType: (data.orderType ?? 'take-out') as Order['orderType'],
-    tableNumber: typeof data.tableNumber === 'number' ? data.tableNumber : undefined,
-    paymentMethod: data.paymentMethod as Order['paymentMethod'] | undefined,
-    paymentStatus: normalizePayment(data.paymentStatus as PaymentStatus | undefined),
-    shiftId: data.shiftId ? String(data.shiftId) : undefined,
-  };
+  if (error) throw error;
+  return data ? rowToOrder(data) : null;
 };
 
-const toFirestore = (order: Omit<Order, 'id'>, now = new Date()) =>
-  removeUndefinedDeep({
-    orderNumber: order.orderNumber,
-    items: order.items,
-    subtotal: order.subtotal ?? order.total,
-    serviceFee: order.serviceFee ?? 0,
-    total: order.total,
-    serviceType: order.serviceType ?? 'self-service',
-    createdAt: Timestamp.fromDate(order.createdAt ? toDate(order.createdAt) : now),
-    updatedAt: Timestamp.fromDate(now),
-    status: normalizeOrderStatus(order.status ?? 'new'),
-    orderType: order.orderType,
-    tableNumber: order.orderType === 'dine-in' ? order.tableNumber : undefined,
-    paymentMethod: order.paymentMethod,
-    paymentStatus: normalizePayment(order.paymentStatus),
-    menuUserId: auth.currentUser?.uid,
-    shiftId: order.shiftId,
-  });
-
-const buildShiftOrderUpdate = (
-  orderTotal: number,
-  paymentMethod: string,
-  items: Order['items'],
-) => {
-  const soldIncrements: Record<string, ReturnType<typeof increment>> = {};
-
-  for (const item of items) {
-    const safeName = item.name.replace(/[.[\]*/~]/g, '_');
-    soldIncrements[`soldItemsSummary.${safeName}`] = increment(item.quantity);
-  }
-
-  return {
-    totalOrders: increment(1),
-    totalRevenue: increment(orderTotal),
-    [`paymentSummary.${paymentMethod}`]: increment(orderTotal),
-    ...soldIncrements,
-  };
-};
-
-// ─── CRUD ─────────────────────────────────────────────────────────────────────
+// ─── Create ───────────────────────────────────────────────────────────────────
 
 export const createOrder = async (
   branchId: string,
   orderData: Omit<Order, 'id'>,
 ): Promise<Order> => {
-  if (!branchId) {
-    throw new Error('branchId is required to create an order');
-  }
+  if (!branchId) throw new Error('branchId is required');
 
-  const activeShift = await getActiveShift(branchId);
-  if (!activeShift) {
-    throw new Error("Smena ochilmagan. Oshxona hozir buyurtma qabul qilmaydi.");
-  }
+  const items = orderData.items.map(i => ({
+    food_id: i.id ?? null,
+    name: i.name,
+    price: i.price,
+    quantity: i.quantity,
+    image_url: i.image ?? '',
+    category_id: i.category ?? '',
+    description: i.description ?? null,
+    ingredients: i.ingredients ?? null,
+    model_3d_url: i.modelUrl ?? null,
+    ar_enabled: i.hasAR ?? false,
+  }));
 
-  const orderWithShift = { ...orderData, shiftId: activeShift.id };
-  
-  try {
-    // Create the order and bump shift totals atomically so order numbers reset
-    // per opened shift and keep increasing by one.
-    const savedOrder = await withRetry(
-      () => runTransaction(db, async transaction => {
-        const shiftRef = shiftDocRef(activeShift.id);
-        const shiftSnap = await transaction.get(shiftRef);
+  // Use the DB function — it checks for open shift, creates order atomically
+  const { data, error } = await supabase.rpc('create_order_with_items', {
+    p_branch_id: branchId,
+    p_items: items,
+    p_subtotal: orderData.subtotal ?? orderData.total,
+    p_service_fee: orderData.serviceFee ?? 0,
+    p_total: orderData.total,
+    p_service_type: orderData.serviceType ?? 'self-service',
+    p_order_type: orderData.orderType,
+    p_table_number: orderData.tableNumber ?? null,
+    p_payment_method: orderData.paymentMethod ?? null,
+    p_payment_status: orderData.paymentStatus ?? 'unpaid',
+  });
 
-        if (!shiftSnap.exists()) {
-          throw new Error("Smena topilmadi. Qayta urinib ko'ring.");
-        }
+  if (error) throw error;
 
-        const shiftData = shiftSnap.data();
-        if (shiftData.branchId !== branchId || shiftData.status !== 'open') {
-          throw new Error("Smena ochilmagan. Oshxona hozir buyurtma qabul qilmaydi.");
-        }
-
-        const orderNumber = Number(shiftData.totalOrders ?? 0) + 1;
-        const numberedOrder = { ...orderWithShift, orderNumber };
-        const data = toFirestore(numberedOrder);
-        const ref = doc(ordersCol(branchId));
-
-        transaction.set(ref, data);
-        transaction.update(
-          shiftRef,
-          buildShiftOrderUpdate(
-            numberedOrder.total,
-            numberedOrder.paymentMethod ?? 'cash',
-            numberedOrder.items,
-          ),
-        );
-
-        return fromFirestore(ref.id, data);
-      }),
-      { maxAttempts: 3, initialDelayMs: 1000 },
-    );
-    return savedOrder;
-  } catch (err: any) {
-    // If error is network-related, queue offline
-    if (isRetryableError(err) || err.message.includes('offline')) {
-      console.log('📦 Network offline - queueing order locally');
-      const queueId = await queueOrderOffline(branchId, orderWithShift);
-      // Return a temporary order with queue ID
-      return {
-        id: queueId,
-        ...orderData,
-        createdAt: new Date(),
-      };
-    }
-    // If auth/permission error, throw immediately (don't retry)
-    throw err;
-  }
+  // Fetch the full order with items
+  const created = await getOrderById(branchId, data.id);
+  if (!created) throw new Error('Order was created but could not be retrieved');
+  return created;
 };
 
-/**
- * Sync all offline queued orders when network is restored.
- */
-export const syncOfflineOrders = async (branchId: string): Promise<void> => {
-  const queued = await getQueuedOrders(branchId);
-  
-  for (const queuedOrder of queued) {
-    try {
-      await incrementSyncAttempt(queuedOrder.id);
-      const ref = await addDoc(ordersCol(branchId), toFirestore(queuedOrder.order));
-      const shiftId = queuedOrder.order.shiftId ?? (await getActiveShift(branchId))?.id;
-      if (shiftId) {
-        await updateShiftOnOrder(
-          shiftId,
-          queuedOrder.order.total,
-          queuedOrder.order.paymentMethod ?? 'cash',
-          queuedOrder.order.items,
-        );
-      }
-      console.log('✅ Synced offline order:', ref.id);
-      await removeQueuedOrder(queuedOrder.id);
-    } catch (err) {
-      console.error('❌ Failed to sync offline order:', queuedOrder.id, err);
-      if ((err as any).message?.includes('permission-denied')) {
-        // Don't retry permission errors - remove from queue
-        await removeQueuedOrder(queuedOrder.id);
-      }
-    }
-  }
-};
-
-export const getOrderById = async (
-  branchId: string,
-  orderId: string,
-): Promise<Order | null> => {
-  const snap = await getDoc(orderDocRef(branchId, orderId));
-  if (!snap.exists()) return null;
-  return fromFirestore(snap.id, snap.data());
-};
+// ─── Update ───────────────────────────────────────────────────────────────────
 
 export const updateOrderStatus = async (
   branchId: string,
   orderId: string,
   status: OrderStatus,
 ): Promise<void> => {
-  if (!branchId) throw new Error('branchId is required');
-  if (!orderId) throw new Error('orderId is required');
+  const { error } = await supabase
+    .from('orders')
+    .update({ status: normalizeOrderStatus(status) })
+    .eq('id', orderId)
+    .eq('branch_id', branchId);
 
-  await withRetry(
-    () => updateDoc(orderDocRef(branchId, orderId), {
-      status: normalizeOrderStatus(status),
-      updatedAt: Timestamp.fromDate(new Date()),
-    }),
-    { maxAttempts: 3, initialDelayMs: 1000 },
-  );
+  if (error) throw error;
 };
 
 export const updatePaymentStatus = async (
@@ -248,49 +133,70 @@ export const updatePaymentStatus = async (
   orderId: string,
   paymentStatus: PaymentStatus,
 ): Promise<void> => {
-  if (!branchId) throw new Error('branchId is required');
-  if (!orderId) throw new Error('orderId is required');
+  const { error } = await supabase
+    .from('orders')
+    .update({ payment_status: paymentStatus })
+    .eq('id', orderId)
+    .eq('branch_id', branchId);
 
-  await withRetry(
-    () => updateDoc(orderDocRef(branchId, orderId), {
-      paymentStatus,
-      updatedAt: Timestamp.fromDate(new Date()),
-    }),
-    { maxAttempts: 3, initialDelayMs: 1000 },
-  );
+  if (error) throw error;
 };
 
 // ─── Realtime subscriptions ───────────────────────────────────────────────────
 
-/** Subscribe to all orders for a branch in real time. */
 export const subscribeToOrders = (
   branchId: string,
   callback: (orders: Order[]) => void,
   onError?: (err: Error) => void,
-) => {
-  const q = query(ordersCol(branchId), orderBy('createdAt', 'asc'));
-  return onSnapshot(
-    q,
-    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
-    err => onError?.(err),
-  );
+): (() => void) => {
+  // Initial fetch
+  getOrders(branchId).then(callback).catch(e => onError?.(e));
+
+  const channel: RealtimeChannel = supabase
+    .channel(`orders:${branchId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'orders', filter: `branch_id=eq.${branchId}` },
+      async () => {
+        try {
+          const orders = await getOrders(branchId);
+          callback(orders);
+        } catch (e) {
+          onError?.(e as Error);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };
 
-/** Subscribe to a single order document for customer order tracking. */
 export const subscribeToOrder = (
   branchId: string,
   orderId: string,
   callback: (order: Order | null) => void,
   onError?: (err: Error) => void,
-) => {
-  return onSnapshot(
-    orderDocRef(branchId, orderId),
-    snap => callback(snap.exists() ? fromFirestore(snap.id, snap.data()) : null),
-    err => onError?.(err),
-  );
+): (() => void) => {
+  getOrderById(branchId, orderId).then(callback).catch(e => onError?.(e));
+
+  const channel: RealtimeChannel = supabase
+    .channel(`order:${orderId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+      async () => {
+        try {
+          const order = await getOrderById(branchId, orderId);
+          callback(order);
+        } catch (e) {
+          onError?.(e as Error);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };
 
-export const getOrders = async (branchId: string): Promise<Order[]> => {
-  const snap = await getDocs(query(ordersCol(branchId), orderBy('createdAt', 'asc')));
-  return snap.docs.map(d => fromFirestore(d.id, d.data()));
-};
+// No-op stub kept for compatibility — offline queuing is not needed with Supabase
+export const syncOfflineOrders = async (_branchId: string): Promise<void> => {};

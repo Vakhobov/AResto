@@ -229,7 +229,7 @@ const Index = () => {
       console.error('Failed to create order:', error);
       toast({
         title: 'Buyurtma saqlanmadi',
-        description: error instanceof Error ? error.message : "Firebase sozlamalarini tekshiring.",
+        description: (error as any)?.message || "Noma'lum xato yuz berdi.",
         variant: 'destructive',
       });
     } finally {

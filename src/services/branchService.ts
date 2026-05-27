@@ -1,51 +1,29 @@
 /**
- * branchService.ts
- * ────────────────
- * Firestore CRUD for the /branches top-level collection.
- * Branches themselves are NOT nested — they are the root of all nested data.
+ * branchService.ts  — Supabase
+ * ─────────────────────────────
+ * CRUD for the `branches` table.
  */
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-  updateDoc,
-  deleteDoc,
-  writeBatch,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
 import { Branch } from '@/types/auth';
-import { removeUndefinedFields } from '@/lib/firestoreUtils';
-import { seedBranchDefaultData } from '@/services/seedService';
 
-const BRANCHES = 'branches';
+// ─── Row → domain ─────────────────────────────────────────────────────────────
 
-const toDate = (v: unknown): Date => {
-  if (v instanceof Timestamp) return v.toDate();
-  if (v instanceof Date) return v;
-  return new Date();
-};
-
-const fromFirestore = (id: string, data: Record<string, unknown>): Branch => ({
-  id,
-  name: String(data.name ?? ''),
-  active: Boolean(data.active ?? true),
-  kitchenUserId: data.kitchenUserId ? String(data.kitchenUserId) : null,
-  menuUserId: data.menuUserId ? String(data.menuUserId) : null,
-  kitchenCredentials: data.kitchenCredentials ? {
-    email: String((data.kitchenCredentials as Record<string, unknown>).email ?? ''),
-    password: String((data.kitchenCredentials as Record<string, unknown>).password ?? ''),
-  } : null,
-  menuCredentials: data.menuCredentials ? {
-    email: String((data.menuCredentials as Record<string, unknown>).email ?? ''),
-    password: String((data.menuCredentials as Record<string, unknown>).password ?? ''),
-  } : null,
-  createdAt: toDate(data.createdAt),
+const rowToBranch = (row: any): Branch => ({
+  id: row.id,
+  name: row.name,
+  active: Boolean(row.active),
+  kitchenUserId: row.kitchen_user_id ?? null,
+  menuUserId: row.menu_user_id ?? null,
+  kitchenCredentials: row.kitchen_credentials
+    ? { email: row.kitchen_credentials.email ?? '', password: row.kitchen_credentials.password ?? '' }
+    : null,
+  menuCredentials: row.menu_credentials
+    ? { email: row.menu_credentials.email ?? '', password: row.menu_credentials.password ?? '' }
+    : null,
+  createdAt: new Date(row.created_at),
 });
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type BranchInput = {
   name: string;
@@ -56,90 +34,71 @@ export type BranchInput = {
   menuCredentials?: { email: string; password: string } | null;
 };
 
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
 export const createBranch = async (data: BranchInput): Promise<Branch> => {
-  const now = Timestamp.fromDate(new Date());
-  const docData = removeUndefinedFields({
-    name: data.name,
-    active: data.active ?? true,
-    kitchenUserId: data.kitchenUserId ?? null,
-    menuUserId: data.menuUserId ?? null,
-    kitchenCredentials: data.kitchenCredentials ?? null,
-    menuCredentials: data.menuCredentials ?? null,
-    createdAt: now,
-  });
-  const ref = await addDoc(collection(db, BRANCHES), docData);
-  try {
-    await seedBranchDefaultData(ref.id);
-  } catch (error) {
-    console.error('Failed to seed default branch data:', error);
-  }
-  return fromFirestore(ref.id, { ...docData, createdAt: now });
+  const { data: row, error } = await supabase
+    .from('branches')
+    .insert({
+      name: data.name,
+      active: data.active ?? true,
+      kitchen_user_id: data.kitchenUserId ?? null,
+      menu_user_id: data.menuUserId ?? null,
+      kitchen_credentials: data.kitchenCredentials ?? null,
+      menu_credentials: data.menuCredentials ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return rowToBranch(row);
 };
 
 export const updateBranch = async (
   branchId: string,
   data: Partial<BranchInput>,
 ): Promise<void> => {
-  await updateDoc(
-    doc(db, BRANCHES, branchId),
-    removeUndefinedFields({
-      ...(data.name                !== undefined && { name: data.name }),
-      ...(data.active              !== undefined && { active: data.active }),
-      ...(data.kitchenUserId       !== undefined && { kitchenUserId: data.kitchenUserId }),
-      ...(data.menuUserId          !== undefined && { menuUserId: data.menuUserId }),
-      ...(data.kitchenCredentials   !== undefined && { kitchenCredentials: data.kitchenCredentials }),
-      ...(data.menuCredentials      !== undefined && { menuCredentials: data.menuCredentials }),
-    }),
-  );
+  const update: Record<string, any> = {};
+  if (data.name               !== undefined) update.name                = data.name;
+  if (data.active             !== undefined) update.active              = data.active;
+  if (data.kitchenUserId      !== undefined) update.kitchen_user_id     = data.kitchenUserId;
+  if (data.menuUserId         !== undefined) update.menu_user_id        = data.menuUserId;
+  if (data.kitchenCredentials !== undefined) update.kitchen_credentials = data.kitchenCredentials;
+  if (data.menuCredentials    !== undefined) update.menu_credentials    = data.menuCredentials;
+
+  const { error } = await supabase.from('branches').update(update).eq('id', branchId);
+  if (error) throw error;
 };
 
 export const getBranches = async (): Promise<Branch[]> => {
-  const snap = await getDocs(query(collection(db, BRANCHES), orderBy('createdAt', 'asc')));
-  return snap.docs.map(d => fromFirestore(d.id, d.data()));
+  const { data, error } = await supabase
+    .from('branches')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(rowToBranch);
+};
+
+export const deleteBranch = async (branchId: string): Promise<void> => {
+  // Cascade delete is handled by FK constraints in schema.sql
+  const { error } = await supabase.from('branches').delete().eq('id', branchId);
+  if (error) throw error;
 };
 
 export const subscribeToBranches = (
   callback: (branches: Branch[]) => void,
   onError?: (err: Error) => void,
-) => {
-  const q = query(collection(db, BRANCHES), orderBy('createdAt', 'asc'));
-  return onSnapshot(
-    q,
-    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
-    err => onError?.(err),
-  );
-};
+): (() => void) => {
+  getBranches().then(callback).catch(e => onError?.(e));
 
-const SUBCOLLECTIONS_TO_REMOVE = ['orders', 'categories', 'foods', 'tables'];
+  const channel = supabase
+    .channel('branches:all')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'branches' }, async () => {
+      try { callback(await getBranches()); }
+      catch (e) { onError?.(e as Error); }
+    })
+    .subscribe();
 
-const chunk = <T,>(arr: T[], size: number) => {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-};
-
-const deleteCollectionDocsBatched = async (branchId: string, subcol: string) => {
-  const snap = await getDocs(collection(db, BRANCHES, branchId, subcol));
-  if (snap.empty) return;
-  const docs = snap.docs.map(d => d.ref);
-  const batches = chunk(docs, 500);
-  for (const batchDocs of batches) {
-    const b = writeBatch(db);
-    batchDocs.forEach(dref => b.delete(dref));
-    await b.commit();
-  }
-};
-
-export const deleteBranch = async (branchId: string): Promise<void> => {
-  // Delete known subcollections first in batches to avoid orphaned data.
-  for (const sub of SUBCOLLECTIONS_TO_REMOVE) {
-    try {
-      await deleteCollectionDocsBatched(branchId, sub);
-    } catch (err) {
-      console.warn(`Failed to delete subcollection ${sub} for branch ${branchId}:`, err);
-    }
-  }
-
-  // Finally remove the branch document itself
-  await deleteDoc(doc(db, BRANCHES, branchId));
+  return () => { supabase.removeChannel(channel); };
 };

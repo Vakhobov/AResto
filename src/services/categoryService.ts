@@ -1,23 +1,10 @@
 /**
- * categoryService.ts
- * ──────────────────
- * Firestore CRUD for categories nested under:
- *   /branches/{branchId}/categories/{categoryId}
+ * categoryService.ts  — Supabase
+ * ───────────────────────────────
+ * CRUD + realtime for the `categories` table.
  */
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { removeUndefinedFields } from '@/lib/firestoreUtils';
+import { supabase } from '@/lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export interface Category {
   id: string;
@@ -31,30 +18,16 @@ export interface Category {
 
 type CategoryInput = Omit<Category, 'id' | 'createdAt' | 'updatedAt'>;
 
-// ─── Path helpers ─────────────────────────────────────────────────────────────
+// ─── Row → domain ─────────────────────────────────────────────────────────────
 
-const catsCol = (branchId: string) =>
-  collection(db, 'branches', branchId, 'categories');
-
-const catDoc = (branchId: string, catId: string) =>
-  doc(db, 'branches', branchId, 'categories', catId);
-
-// ─── Serialisation ────────────────────────────────────────────────────────────
-
-const toDate = (v: unknown): Date => {
-  if (v instanceof Timestamp) return v.toDate();
-  if (v instanceof Date) return v;
-  return new Date();
-};
-
-const fromFirestore = (id: string, data: Record<string, unknown>): Category => ({
-  id,
-  name: String(data.name ?? ''),
-  icon: String(data.icon ?? ''),
-  sortOrder: data.sortOrder != null ? Number(data.sortOrder) : undefined,
-  active: Boolean(data.active ?? true),
-  createdAt: toDate(data.createdAt),
-  updatedAt: toDate(data.updatedAt),
+const rowToCategory = (row: any): Category => ({
+  id: row.id,
+  name: row.name,
+  icon: row.icon ?? '',
+  sortOrder: row.sort_order ?? 0,
+  active: Boolean(row.active),
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at),
 });
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -63,17 +36,23 @@ export const createCategory = async (
   branchId: string,
   data: CategoryInput,
 ): Promise<Category> => {
-  const now = Timestamp.fromDate(new Date());
-  const doc_data = removeUndefinedFields({
-    name: data.name,
-    icon: data.icon,
-    sortOrder: data.sortOrder ?? 0,
-    active: data.active ?? true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const ref = await addDoc(catsCol(branchId), doc_data);
-  return fromFirestore(ref.id, { ...doc_data, createdAt: now, updatedAt: now });
+  const id = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
+
+  const { data: row, error } = await supabase
+    .from('categories')
+    .insert({
+      id,
+      branch_id: branchId,
+      name: data.name,
+      icon: data.icon ?? '',
+      sort_order: data.sortOrder ?? 0,
+      active: data.active ?? true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return rowToCategory(row);
 };
 
 export const updateCategory = async (
@@ -81,18 +60,42 @@ export const updateCategory = async (
   categoryId: string,
   data: Partial<CategoryInput>,
 ): Promise<void> => {
-  const update = removeUndefinedFields({
-    ...(data.name      !== undefined && { name: data.name }),
-    ...(data.icon      !== undefined && { icon: data.icon }),
-    ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),
-    ...(data.active    !== undefined && { active: data.active }),
-    updatedAt: Timestamp.fromDate(new Date()),
-  });
-  await updateDoc(catDoc(branchId, categoryId), update);
+  const update: Record<string, any> = {};
+  if (data.name      !== undefined) update.name       = data.name;
+  if (data.icon      !== undefined) update.icon       = data.icon;
+  if (data.sortOrder !== undefined) update.sort_order = data.sortOrder;
+  if (data.active    !== undefined) update.active     = data.active;
+
+  const { error } = await supabase
+    .from('categories')
+    .update(update)
+    .eq('id', categoryId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
 };
 
 export const deleteCategory = async (branchId: string, categoryId: string): Promise<void> => {
-  await deleteDoc(catDoc(branchId, categoryId));
+  const { error } = await supabase
+    .from('categories')
+    .delete()
+    .eq('id', categoryId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
+};
+
+// ─── Queries ──────────────────────────────────────────────────────────────────
+
+export const getCategories = async (branchId: string): Promise<Category[]> => {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('branch_id', branchId)
+    .order('sort_order', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(rowToCategory);
 };
 
 // ─── Realtime subscription ────────────────────────────────────────────────────
@@ -101,16 +104,24 @@ export const subscribeToCategories = (
   branchId: string,
   callback: (cats: Category[]) => void,
   onError?: (err: Error) => void,
-) => {
-  const q = query(catsCol(branchId), orderBy('sortOrder', 'asc'));
-  return onSnapshot(
-    q,
-    snap => callback(snap.docs.map(d => fromFirestore(d.id, d.data()))),
-    err => onError?.(err),
-  );
-};
+): (() => void) => {
+  getCategories(branchId).then(callback).catch(e => onError?.(e));
 
-export const getCategories = async (branchId: string): Promise<Category[]> => {
-  const snap = await getDocs(query(catsCol(branchId), orderBy('sortOrder', 'asc')));
-  return snap.docs.map(d => fromFirestore(d.id, d.data()));
+  const channel: RealtimeChannel = supabase
+    .channel(`categories:${branchId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'categories', filter: `branch_id=eq.${branchId}` },
+      async () => {
+        try {
+          const cats = await getCategories(branchId);
+          callback(cats);
+        } catch (e) {
+          onError?.(e as Error);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };

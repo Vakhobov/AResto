@@ -90,7 +90,7 @@ export const OrderHistoryTable = ({ branchId }: OrderHistoryTableProps) => {
       console.error('Failed to update admin order status:', updateError);
       toast({
         title: 'Holat yangilanmadi',
-        description: "Firebase sozlamalarini tekshiring va qayta urinib ko'ring.",
+        description: (err as any)?.message || "Kutilmagan xato yuz berdi.",
         variant: 'destructive',
       });
     }

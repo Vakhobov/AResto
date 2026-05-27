@@ -1,32 +1,15 @@
 /**
- * shiftService.ts  (full rewrite)
- * ─────────────────────────────────
- * Firestore CRUD for the `shifts` collection with complete summary tracking.
- * Branch-isolated: all queries scoped by branchId unless null (SuperAdmin).
+ * shiftService.ts  — Supabase
+ * ────────────────────────────
+ * CRUD + realtime for the `shifts` table.
+ * Uses supabase.rpc('apply_shift_order_summary') for atomic shift updates.
  */
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  increment,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-  updateDoc,
-  where,
-  limit,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { removeUndefinedFields } from '@/lib/firestoreUtils';
+import { supabase } from '@/lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { CartItem } from '@/types/kiosk';
-
-const SHIFTS = 'shifts';
 
 export type ShiftStatus = 'open' | 'closed';
 
-/** Per-payment-method revenue breakdown stored in the shift doc. */
 export interface PaymentSummary {
   cash: number;
   card: number;
@@ -37,7 +20,6 @@ export interface PaymentSummary {
   [key: string]: number;
 }
 
-/** Per-food-item quantity sold, keyed by item name. */
 export interface SoldItemsSummary {
   [itemName: string]: number;
 }
@@ -45,7 +27,7 @@ export interface SoldItemsSummary {
 export interface Shift {
   id: string;
   branchId: string;
-  openedBy: string;       // user fullName or id
+  openedBy: string;
   closedBy?: string;
   status: ShiftStatus;
   openedAt: Date;
@@ -57,35 +39,28 @@ export interface Shift {
   soldItemsSummary: SoldItemsSummary;
 }
 
-/* ─── helpers ─────────────────────────────────────────── */
+// ─── Row → domain ─────────────────────────────────────────────────────────────
 
-const toDate = (value: unknown): Date => {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
-  return new Date();
-};
-
-const emptyPaymentSummary = (): PaymentSummary => ({
+const emptyPayment = (): PaymentSummary => ({
   cash: 0, card: 0, nfc: 0, click: 0, payme: 0, uzum: 0,
 });
 
-const fromFirestoreShift = (id: string, data: Record<string, unknown>): Shift => ({
-  id,
-  branchId: String(data.branchId ?? ''),
-  openedBy: String(data.openedBy ?? ''),
-  closedBy: data.closedBy ? String(data.closedBy) : undefined,
-  status: (data.status as ShiftStatus) ?? 'open',
-  openedAt: toDate(data.openedAt),
-  closedAt: data.closedAt ? toDate(data.closedAt) : undefined,
-  notes: data.notes ? String(data.notes) : undefined,
-  totalOrders: Number(data.totalOrders ?? 0),
-  totalRevenue: Number(data.totalRevenue ?? 0),
-  paymentSummary: (data.paymentSummary as PaymentSummary) ?? emptyPaymentSummary(),
-  soldItemsSummary: (data.soldItemsSummary as SoldItemsSummary) ?? {},
+const rowToShift = (row: any): Shift => ({
+  id: row.id,
+  branchId: row.branch_id,
+  openedBy: row.opened_by,
+  closedBy: row.closed_by ?? undefined,
+  status: row.status as ShiftStatus,
+  openedAt: new Date(row.opened_at),
+  closedAt: row.closed_at ? new Date(row.closed_at) : undefined,
+  notes: row.notes ?? undefined,
+  totalOrders: Number(row.total_orders ?? 0),
+  totalRevenue: Number(row.total_revenue ?? 0),
+  paymentSummary: (row.payment_summary as PaymentSummary) ?? emptyPayment(),
+  soldItemsSummary: (row.sold_items_summary as SoldItemsSummary) ?? {},
 });
 
-/* ─── open shift ───────────────────────────────────────── */
+// ─── Open / close ─────────────────────────────────────────────────────────────
 
 export interface OpenShiftInput {
   branchId: string;
@@ -94,156 +69,158 @@ export interface OpenShiftInput {
 }
 
 export const openShift = async (input: OpenShiftInput): Promise<Shift> => {
-  // Guard: don't allow two open shifts for the same branch
+  // Guard: no double-open
   const existing = await getActiveShift(input.branchId);
   if (existing) throw new Error('Bu filial uchun allaqachon ochiq smena mavjud');
 
-  const now = Timestamp.fromDate(new Date());
-  const data = removeUndefinedFields({
-    branchId: input.branchId,
-    openedBy: input.openedBy,
-    status: 'open' as ShiftStatus,
-    openedAt: now,
-    totalOrders: 0,
-    totalRevenue: 0,
-    paymentSummary: emptyPaymentSummary(),
-    soldItemsSummary: {},
-    ...(input.notes ? { notes: input.notes } : {}),
-  });
+  const { data, error } = await supabase
+    .from('shifts')
+    .insert({
+      branch_id: input.branchId,
+      opened_by: input.openedBy,
+      status: 'open',
+      notes: input.notes ?? null,
+      total_orders: 0,
+      total_revenue: 0,
+      payment_summary: emptyPayment(),
+      sold_items_summary: {},
+    })
+    .select()
+    .single();
 
-  const docRef = await addDoc(collection(db, SHIFTS), data);
-  return fromFirestoreShift(docRef.id, { ...data, openedAt: now });
+  if (error) throw error;
+  return rowToShift(data);
 };
-
-/* ─── close shift ──────────────────────────────────────── */
 
 export const closeShift = async (
   shiftId: string,
   closedBy: string,
   notes?: string,
 ): Promise<void> => {
-  await updateDoc(doc(db, SHIFTS, shiftId), removeUndefinedFields({
-    status: 'closed' as ShiftStatus,
-    closedBy,
-    closedAt: Timestamp.fromDate(new Date()),
-    ...(notes !== undefined ? { notes } : {}),
-  }));
+  const update: Record<string, any> = {
+    status: 'closed',
+    closed_by: closedBy,
+    closed_at: new Date().toISOString(),
+  };
+  if (notes) update.notes = notes;
+
+  const { error } = await supabase.from('shifts').update(update).eq('id', shiftId);
+  if (error) throw error;
 };
 
-/* ─── update shift totals on order ────────────────────── */
+// ─── Update shift totals on order ─────────────────────────────────────────────
 
-/**
- * Called after every successful paid order to update shift aggregates.
- * Uses Firestore `increment()` for atomic, race-safe updates.
- */
 export const updateShiftOnOrder = async (
   shiftId: string,
   orderTotal: number,
   paymentMethod: string,
   items: CartItem[],
 ): Promise<void> => {
-  // Build soldItems increments: { 'soldItemsSummary.Burger': increment(2) }
-  const soldIncrements: Record<string, ReturnType<typeof increment>> = {};
-  for (const item of items) {
-    const safeName = item.name.replace(/[.[\]*/~]/g, '_');
-    const key = `soldItemsSummary.${safeName}`;
-    soldIncrements[key] = increment(item.quantity);
-  }
-
-  const paymentKey = `paymentSummary.${paymentMethod}`;
-
-  await updateDoc(doc(db, SHIFTS, shiftId), {
-    totalOrders: increment(1),
-    totalRevenue: increment(orderTotal),
-    [paymentKey]: increment(orderTotal),
-    ...soldIncrements,
+  const { error } = await supabase.rpc('apply_shift_order_summary', {
+    p_shift_id: shiftId,
+    p_order_total: orderTotal,
+    p_payment_method: paymentMethod,
+    p_items: items.map(i => ({ name: i.name, quantity: i.quantity })),
   });
+  if (error) throw error;
 };
 
-/* ─── queries ──────────────────────────────────────────── */
+// ─── Queries ──────────────────────────────────────────────────────────────────
 
-/**
- * Get the currently open shift for a branch (one-time fetch).
- * Returns null if no open shift exists.
- */
 export const getActiveShift = async (branchId: string): Promise<Shift | null> => {
-  const q = query(
-    collection(db, SHIFTS),
-    where('branchId', '==', branchId),
-    where('status', '==', 'open'),
-    limit(1),
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return fromFirestoreShift(d.id, d.data());
+  const { data, error } = await supabase
+    .from('shifts')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('status', 'open')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToShift(data) : null;
 };
 
-/**
- * Realtime subscription to the active shift for a branch.
- * Fires immediately and on every update to the open shift document.
- * Returns unsubscribe function.
- */
+export const getShifts = async (branchId: string | null): Promise<Shift[]> => {
+  let q = supabase.from('shifts').select('*').order('opened_at', { ascending: false });
+  if (branchId) q = q.eq('branch_id', branchId);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(rowToShift);
+};
+
+// ─── Realtime subscriptions ───────────────────────────────────────────────────
+
 export const subscribeToActiveShift = (
   branchId: string | null,
   callback: (shift: Shift | null) => void,
   onError?: (err: Error) => void,
-) => {
-  if (!branchId) {
-    // SuperAdmin: subscribe to all open shifts (returns latest)
-    const q = query(
-      collection(db, SHIFTS),
-      where('status', '==', 'open'),
-      orderBy('openedAt', 'desc'),
-      limit(1),
-    );
-    return onSnapshot(
-      q,
-      snap => callback(snap.empty ? null : fromFirestoreShift(snap.docs[0].id, snap.docs[0].data())),
-      err => onError?.(err),
-    );
-  }
+): (() => void) => {
 
-  const q = query(
-    collection(db, SHIFTS),
-    where('branchId', '==', branchId),
-    where('status', '==', 'open'),
-    limit(1),
-  );
-  return onSnapshot(
-    q,
-    snap => callback(snap.empty ? null : fromFirestoreShift(snap.docs[0].id, snap.docs[0].data())),
-    err => onError?.(err),
-  );
+  const fetchAndNotify = async () => {
+    console.log('[shiftService] fetchAndNotify started. branchId=', branchId);
+    try {
+      if (!branchId) {
+        // SuperAdmin: get any open shift
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('status', 'open')
+          .order('opened_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        console.log('[shiftService] SuperAdmin shift fetch result:', { data, error });
+        if (error) throw error;
+        callback(data ? rowToShift(data) : null);
+      } else {
+        const shift = await getActiveShift(branchId);
+        console.log('[shiftService] Branch shift fetch result:', shift);
+        callback(shift);
+      }
+    } catch (e) {
+      console.error('[shiftService] fetchAndNotify error:', e);
+      onError?.(e as Error);
+    }
+  };
+
+  // Initial fetch
+  fetchAndNotify();
+
+  const filter = branchId ? `branch_id=eq.${branchId}` : undefined;
+  const channelOpts: any = { event: '*', schema: 'public', table: 'shifts' };
+  if (filter) channelOpts.filter = filter;
+
+  const channel: RealtimeChannel = supabase
+    .channel(`shifts:active:${branchId ?? 'all'}`)
+    .on('postgres_changes', channelOpts, fetchAndNotify)
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };
 
-/**
- * Subscribe to ALL shifts (history) for a branch.
- */
 export const subscribeToShifts = (
   branchId: string | null,
   callback: (shifts: Shift[]) => void,
-  onError?: (error: Error) => void,
-) => {
-  const q = branchId
-    ? query(
-        collection(db, SHIFTS),
-        where('branchId', '==', branchId),
-        orderBy('openedAt', 'desc'),
-      )
-    : query(collection(db, SHIFTS), orderBy('openedAt', 'desc'));
+  onError?: (err: Error) => void,
+): (() => void) => {
+  const fetchAndNotify = async () => {
+    try {
+      const shifts = await getShifts(branchId);
+      callback(shifts);
+    } catch (e) {
+      onError?.(e as Error);
+    }
+  };
 
-  return onSnapshot(
-    q,
-    snap => callback(snap.docs.map(d => fromFirestoreShift(d.id, d.data()))),
-    err => onError?.(err),
-  );
-};
+  fetchAndNotify();
 
-export const getShifts = async (branchId: string | null): Promise<Shift[]> => {
-  const q = branchId
-    ? query(collection(db, SHIFTS), where('branchId', '==', branchId), orderBy('openedAt', 'desc'))
-    : query(collection(db, SHIFTS), orderBy('openedAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => fromFirestoreShift(d.id, d.data()));
+  const channelOpts: any = { event: '*', schema: 'public', table: 'shifts' };
+  if (branchId) channelOpts.filter = `branch_id=eq.${branchId}`;
+
+  const channel: RealtimeChannel = supabase
+    .channel(`shifts:all:${branchId ?? 'all'}`)
+    .on('postgres_changes', channelOpts, fetchAndNotify)
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
 };

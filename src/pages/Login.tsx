@@ -22,7 +22,7 @@ const getFriendlyError = (error: any): string => {
   if (code === 'auth/wrong-password')       return "Parol noto'g'ri.";
   if (code === 'auth/invalid-email')        return "Email formati noto'g'ri.";
   if (code === 'auth/network-request-failed') return "Tarmoq xatosi. Internet aloqasini tekshiring.";
-  const msg = error instanceof Error ? error.message : String(error ?? "Noma'lum xato");
+  const msg = (error as any)?.message || (error instanceof Error ? error.message : String(error ?? "Noma'lum xato"));
   return msg;
 };
 
@@ -47,21 +47,27 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Login attempt started:', email);
     if (!email.trim() || !password.trim()) {
       toast({ title: "Ma'lumotlarni kiriting", description: 'Email va parol majburiy.', variant: 'destructive' });
       return;
     }
     setLoading(true);
     try {
+      console.log('Calling login()...');
       const profile = await login(email.trim(), password);
+      console.log('Login successful, navigating...', profile);
       navigate(getRedirectPath(profile.role), { replace: true });
     } catch (err: any) {
+      console.error('Login error caught:', err);
+      console.error('Login catch error:', err);
       toast({
         title: 'Kirish amalga oshmadi',
-        description: getFriendlyError(err),
+        description: (err as any)?.message || err.message,
         variant: 'destructive',
       });
     } finally {
+      console.log('Login finally block executed, setting loading to false.');
       setLoading(false);
     }
   };

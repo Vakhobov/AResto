@@ -148,7 +148,7 @@ interface ShiftPanelProps {
 }
 
 export const ShiftPanel: React.FC<ShiftPanelProps> = ({ branchId }) => {
-  const { activeShift, shiftLoading, isOpen } = useShift();
+  const { activeShift, shiftLoading, isOpen, shiftError, refreshActiveShift } = useShift();
   const { userProfile } = useAuth();
   const { toast } = useToast();
 
@@ -172,14 +172,15 @@ export const ShiftPanel: React.FC<ShiftPanelProps> = ({ branchId }) => {
     }
     setOpening(true);
     try {
-      await openShift({ branchId, openedBy: userProfile?.email ?? 'Admin' });
+      const newShift = await openShift({ branchId, openedBy: userProfile?.email ?? 'Admin' });
+      refreshActiveShift(newShift);
       toast({ title: 'Smena ochildi ✅', description: 'Buyurtmalar qabul qilinmoqda.' });
     } catch (err) {
       toast({ title: 'Xato', description: String(err), variant: 'destructive' });
     } finally {
       setOpening(false);
     }
-  }, [branchId, userProfile?.email, toast]);
+  }, [branchId, userProfile, refreshActiveShift, toast]);
 
   const handleClose = useCallback(async () => {
     if (!activeShift) return;
@@ -188,6 +189,7 @@ export const ShiftPanel: React.FC<ShiftPanelProps> = ({ branchId }) => {
       const closedBy = userProfile?.email ?? 'Admin';
       const closedAt = new Date();
       await closeShift(activeShift.id, closedBy, closeNotes || undefined);
+      refreshActiveShift(null);
       setSummaryShift({
         ...activeShift,
         status: 'closed',
@@ -203,7 +205,18 @@ export const ShiftPanel: React.FC<ShiftPanelProps> = ({ branchId }) => {
     } finally {
       setClosing(false);
     }
-  }, [activeShift, userProfile?.email, closeNotes, toast]);
+  }, [activeShift, userProfile, closeNotes, refreshActiveShift, toast]);
+
+  if (shiftError) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-red-500">
+        <AlertCircle className="h-8 w-8" />
+        <h3 className="font-semibold text-lg">Smena ma'lumotini yuklashda xato</h3>
+        <p className="text-sm text-center font-mono break-all px-4">{shiftError}</p>
+        <p className="text-xs text-red-400 mt-2">Iltimos, ushbu xatoni rasmga olib yuboring.</p>
+      </div>
+    );
+  }
 
   if (shiftLoading) {
     return (

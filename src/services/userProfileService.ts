@@ -1,73 +1,53 @@
 /**
- * userProfileService.ts
- * ──────────────────────
- * Manages Firebase Auth accounts + Firestore /users/{uid} profile documents.
- *
- * Firestore structure:
- *   /users/{uid}  →  UserProfile
+ * userProfileService.ts  — Supabase
+ * ─────────────────────────────────
+ * User profile CRUD via Supabase `profiles` table.
+ * User creation delegates to /api/admin-users (Vercel function) so the
+ * service-role key stays server-side only.
  */
-import {
-  createUserWithEmailAndPassword,
-  getAuth,
-  signInWithEmailAndPassword,
-  signOut,
-  updateEmail,
-  updatePassword,
-} from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { app, auth, db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
 import { UserProfile, UserRole } from '@/types/auth';
 
-const USERS = 'users';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ─── Firestore helpers ────────────────────────────────────────────────────────
-
-const toDate = (v: unknown): Date => {
-  if (v instanceof Timestamp) return v.toDate();
-  if (v instanceof Date) return v;
-  return new Date();
-};
-
-const fromFirestore = (uid: string, data: Record<string, unknown>): UserProfile => ({
-  uid,
-  email: String(data.email ?? ''),
-  role: (data.role as UserRole) ?? 'menu',
-  branchId: data.branchId ? String(data.branchId) : null,
-  branchName: data.branchName ? String(data.branchName) : null,
-  createdAt: toDate(data.createdAt),
+const rowToProfile = (row: any): UserProfile => ({
+  uid: row.id,
+  email: row.email,
+  role: row.role as UserRole,
+  branchId: row.branch_id ?? null,
+  branchName: row.branch_name ?? null,
+  createdAt: new Date(row.created_at),
 });
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Fetch Firestore profile by Firebase UID. Returns null if not found. */
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
-  const snap = await getDoc(doc(db, USERS, uid));
-  if (!snap.exists()) return null;
-  return fromFirestore(uid, snap.data() as Record<string, unknown>);
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, role, branch_id, branch_name, created_at')
+    .eq('id', uid)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToProfile(data) : null;
 };
 
-/** Write/overwrite a Firestore profile document. */
-export const setUserProfile = async (profile: Omit<UserProfile, 'createdAt'>): Promise<void> => {
-  await setDoc(doc(db, USERS, profile.uid), {
+export const setUserProfile = async (
+  profile: Omit<UserProfile, 'createdAt'>,
+): Promise<void> => {
+  const { error } = await supabase.from('profiles').upsert({
+    id: profile.uid,
     email: profile.email,
     role: profile.role,
-    branchId: profile.branchId ?? null,
-    branchName: profile.branchName ?? null,
-    createdAt: Timestamp.fromDate(new Date()),
+    branch_id: profile.branchId ?? null,
+    branch_name: profile.branchName ?? null,
   });
+  if (error) throw error;
 };
 
 /**
- * Create a Firebase Auth user + Firestore profile in one call.
- * Used by SuperAdmin when provisioning kitchen/menu accounts.
- * Returns the new Firebase UID.
+ * Calls the /api/admin-users Vercel function to create a Firebase/Supabase Auth
+ * user + profile row.  The service-role key lives only on the server.
  */
 export const createFirebaseUser = async (
   email: string,
@@ -76,79 +56,84 @@ export const createFirebaseUser = async (
   branchId: string | null,
   branchName: string | null,
 ): Promise<string> => {
-  const secondaryApp = initializeApp(app.options, `provision-user-${Date.now()}`);
-  const secondaryAuth = getAuth(secondaryApp);
+  // Get the current session token to authenticate as superadmin
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? '';
 
-  try {
-    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-    const uid = credential.user.uid;
+  const res = await fetch('/api/admin-users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action: 'create', email, password, role, branchId, branchName }),
+  });
 
-    await setUserProfile({ uid, email, role, branchId, branchName });
-    await signOut(secondaryAuth);
-    return uid;
-  } finally {
-    await deleteApp(secondaryApp);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error ?? `HTTP ${res.status}`);
   }
-};
 
-export const updateFirebaseUserCredentials = async (
-  currentEmail: string,
-  currentPassword: string,
-  newEmail: string,
-  newPassword: string,
-): Promise<string> => {
-  const secondaryApp = initializeApp(app.options, `update-user-${Date.now()}`);
-  const secondaryAuth = getAuth(secondaryApp);
-
+  let result;
   try {
-    const credential = await signInWithEmailAndPassword(secondaryAuth, currentEmail, currentPassword);
-    const user = credential.user;
-
-    if (newEmail && newEmail !== currentEmail) {
-      await updateEmail(user, newEmail);
-      await updateDoc(doc(db, USERS, user.uid), { email: newEmail });
-    }
-
-    if (newPassword) {
-      await updatePassword(user, newPassword);
-    }
-
-    await signOut(secondaryAuth);
-    return user.uid;
-  } finally {
-    await deleteApp(secondaryApp);
+    result = await res.json();
+  } catch (e) {
+    throw new Error(`Tarmoq xatosi (HTTP ${res.status}). Iltimos, API serverni tekshiring (npm run dev:full).`);
   }
+  return result.uid as string;
 };
 
 /**
- * Seed the superadmin Firebase Auth account + Firestore profile on first run.
- * Safe to call multiple times — skips if the account already exists.
+ * Seeds the superadmin account via the /api/admin-users endpoint.
+ * Safe to call multiple times — skips if already exists.
  */
-export const seedSuperAdmin = async (): Promise<void> => {
-  const SUPERADMIN_EMAIL = 'superadmin@aresto.com';
-  const SUPERADMIN_PASSWORD = 'Admin1234!';
+/**
+ * Updates email+password for an existing user via the /api/admin-users endpoint.
+ */
+export const updateFirebaseUserCredentials = async (
+  currentEmail: string,
+  newEmail: string,
+  newPassword: string,
+): Promise<string> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? '';
 
+  const res = await fetch('/api/admin-users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action: 'updateCredentials', currentEmail, newEmail, newPassword }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error ?? `HTTP ${res.status}`);
+  }
+
+  let result;
   try {
-    // Try to create Firebase Auth account
-    const credential = await createUserWithEmailAndPassword(auth, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD);
-    const uid = credential.user.uid;
+    result = await res.json();
+  } catch (e) {
+    throw new Error(`Tarmoq xatosi (HTTP ${res.status}). Iltimos, API serverni tekshiring (npm run dev:full).`);
+  }
+  return result.uid as string;
+};
 
-    // Write Firestore profile
-    await setUserProfile({
-      uid,
-      email: SUPERADMIN_EMAIL,
-      role: 'superadmin',
-      branchId: null,
-      branchName: null,
-    });
+export const seedSuperAdmin = async (): Promise<void> => {
+  const res = await fetch('/api/admin-users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'seedSuperAdmin',
+      email: 'superadmin@aresto.com',
+      password: 'Admin1234!',
+    }),
+  });
 
-    console.log('✅ SuperAdmin seeded:', SUPERADMIN_EMAIL);
-  } catch (err: any) {
-    if (err.code === 'auth/email-already-in-use') {
-      console.log('✅ SuperAdmin already exists.');
-    } else {
-      console.error('Failed to seed SuperAdmin:', err);
-      throw err; // Re-throw so Login.tsx knows it failed
-    }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error ?? `HTTP ${res.status}`);
   }
 };
