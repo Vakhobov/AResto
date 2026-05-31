@@ -12,6 +12,7 @@ import {
   LogOut,
   Clock,
   Tag,
+  BarChart3,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MenuItem } from '@/types/kiosk';
@@ -30,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { ShiftProvider } from '@/context/ShiftContext';
 import { DiagnosticConsole } from '@/components/admin/DiagnosticConsole';
+import { Dashboard } from '@/components/admin/Dashboard';
 
 
 const Admin = () => {
@@ -232,8 +234,11 @@ const Admin = () => {
             </div>
           )}
 
-          <Tabs defaultValue="shift" className="space-y-4 md:space-y-6">
+          <Tabs defaultValue="dashboard" className="space-y-4 md:space-y-6">
             <TabsList className="bg-card border border-border rounded-xl p-1 w-full sm:w-auto flex">
+              <TabsTrigger value="dashboard" className="flex-1 sm:flex-none rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <BarChart3 className="w-4 h-4" /><span className="hidden sm:inline">Dashboard</span>
+              </TabsTrigger>
               <TabsTrigger value="shift" className="flex-1 sm:flex-none rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 <Clock className="w-4 h-4" /><span className="hidden sm:inline">Smena</span>
               </TabsTrigger>
@@ -247,6 +252,11 @@ const Admin = () => {
                 <ClipboardList className="w-4 h-4" /><span className="hidden sm:inline">Buyurtmalar</span>
               </TabsTrigger>
             </TabsList>
+
+            {/* ── DASHBOARD TAB ──────────────────────────────────────────────────── */}
+            <TabsContent value="dashboard" className="space-y-4">
+              <Dashboard branchId={branchId} />
+            </TabsContent>
 
             {/* ── SHIFT TAB ─────────────────────────────────────────────────────── */}
             <TabsContent value="shift" className="space-y-4">
