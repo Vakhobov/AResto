@@ -1,5 +1,6 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import type { PaymentMethodSlice } from '@/types/dashboard';
+import { formatPrice } from '@/lib/currency';
 
 const COLORS = ['#F97316', '#2563EB', '#14B8A6', '#A855F7', '#22C55E', '#EAB308'];
 
@@ -18,7 +19,7 @@ export const PaymentMethodsChart = ({ data }: { data: PaymentMethodSlice[] }) =>
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-center text-sm text-white/80">Jami: {Math.round(total).toLocaleString('ru-RU')} so'm</p>
+      <p className="text-center text-sm text-white/80">Jami: {formatPrice(total)}</p>
     </div>
   );
 };

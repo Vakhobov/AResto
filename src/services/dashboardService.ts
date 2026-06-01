@@ -14,6 +14,44 @@ type OrderRow = {
   payment_method: string | null;
 };
 
+type StatsRpcResponse = {
+  total_revenue: number;
+  total_orders: number;
+  avg_order: number;
+  cancelled_orders: number;
+  paid_orders: number;
+  dine_in_count: number;
+  take_out_count: number;
+  active_tables: number;
+  total_tables: number;
+};
+
+type HourlyRow = {
+  hour: number;
+  revenue: number;
+  order_count: number;
+};
+
+type DailyRow = {
+  date: string;
+  revenue: number;
+  order_count: number;
+};
+
+type PaymentRow = {
+  payment_method: string;
+  total_amount: number;
+  order_count: number;
+};
+
+type ProductRow = {
+  food_id: string;
+  name: string;
+  image_url: string;
+  total_quantity: number;
+  total_revenue: number;
+};
+
 const PM_LABELS: Record<string, string> = {
   cash: 'Naqd',
   click: 'Click',
@@ -22,6 +60,8 @@ const PM_LABELS: Record<string, string> = {
   card: 'Karta',
   nfc: 'NFC',
 };
+
+const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 
 export const resolveDateRange = (
   key: DashboardRangeKey,
@@ -112,11 +152,46 @@ const buildSeries = (orders: OrderRow[], range: DateRange) => {
   };
 };
 
+const getDaysForRangeKey = (key: DashboardRangeKey) => {
+  switch (key) {
+    case '7d': return 6;
+    case '30d': return 29;
+    case '3m': return 89;
+    case 'year': return 364;
+    default: return undefined;
+  }
+};
+
 export const getDashboardAnalytics = async (
   branchId: string,
   range: DateRange,
+  rangeKey: DashboardRangeKey,
 ): Promise<DashboardAnalyticsData> => {
   const prev = previousRange(range);
+  const dateString = formatDate(range.start);
+  const useHourlyRpc = rangeKey === 'today' || rangeKey === 'yesterday' || (
+    rangeKey === 'custom' && formatDate(range.start) === formatDate(range.end)
+  );
+  const useDailyRevenueRpc = getDaysForRangeKey(rangeKey) !== undefined;
+
+  const statsPromise = supabase.rpc<StatsRpcResponse>('get_branch_stats', {
+    p_branch_id: branchId,
+    p_from: range.start.toISOString(),
+    p_to: range.end.toISOString(),
+  });
+
+  const paymentsPromise = supabase.rpc<PaymentRow>('get_payment_breakdown', {
+    p_branch_id: branchId,
+    p_from: range.start.toISOString(),
+    p_to: range.end.toISOString(),
+  });
+
+  const productsPromise = supabase.rpc<ProductRow>('get_top_products', {
+    p_branch_id: branchId,
+    p_from: range.start.toISOString(),
+    p_to: range.end.toISOString(),
+    p_limit: 5,
+  });
 
   const ordersQ = supabase
     .from('orders')
@@ -145,11 +220,35 @@ export const getDashboardAnalytics = async (
     .eq('branch_id', branchId)
     .eq('active', true);
 
-  const [ordersRes, prevOrdersRes, itemsRes, tablesRes] = await Promise.all([ordersQ, prevOrdersQ, itemsQ, tablesQ]);
+  const [statsRes, paymentsRes, productsRes, ordersRes, prevOrdersRes, itemsRes, tablesRes] = await Promise.all([
+    statsPromise,
+    paymentsPromise,
+    productsPromise,
+    ordersQ,
+    prevOrdersQ,
+    itemsQ,
+    tablesQ,
+  ]);
+
+  if (statsRes.error) throw statsRes.error;
+  if (paymentsRes.error) throw paymentsRes.error;
+  if (productsRes.error) throw productsRes.error;
   if (ordersRes.error) throw ordersRes.error;
   if (prevOrdersRes.error) throw prevOrdersRes.error;
   if (itemsRes.error) throw itemsRes.error;
   if (tablesRes.error) throw tablesRes.error;
+
+  const stats = statsRes.data ?? {
+    total_revenue: 0,
+    total_orders: 0,
+    avg_order: 0,
+    cancelled_orders: 0,
+    paid_orders: 0,
+    dine_in_count: 0,
+    take_out_count: 0,
+    active_tables: 0,
+    total_tables: 0,
+  };
 
   const orders = (ordersRes.data ?? []) as OrderRow[];
   const prevOrders = (prevOrdersRes.data ?? []) as Array<{ total: number; status: string }>;
@@ -161,20 +260,20 @@ export const getDashboardAnalytics = async (
   const cancelled = orders.filter((o) => o.status === 'cancelled').length;
   const prevCancelled = prevOrders.filter((o) => o.status === 'cancelled').length;
 
+  const paymentMethods = (paymentsRes.data ?? []) as PaymentRow[];
+  const bestSellingFoods = (productsRes.data ?? []) as ProductRow[];
+
   const paymentMap = new Map<string, { count: number; amount: number }>();
-  orders.forEach((o) => {
-    const pm = o.payment_method ?? 'cash';
-    if (!paymentMap.has(pm)) paymentMap.set(pm, { count: 0, amount: 0 });
-    const row = paymentMap.get(pm)!;
-    row.count += 1;
-    row.amount += Number(o.total ?? 0);
+  paymentMethods.forEach((row) => {
+    const key = row.payment_method ?? 'unknown';
+    paymentMap.set(key, { count: Number(row.order_count ?? 0), amount: Number(row.total_amount ?? 0) });
   });
 
   const foodsMap = new Map<string, { id: string; name: string; imageUrl: string; quantity: number; revenue: number }>();
   orderItems.forEach((item) => {
     const key = item.name;
     if (!foodsMap.has(key)) {
-      foodsMap.set(key, { id: item.id, name: item.name, imageUrl: item.image_url, quantity: 0, revenue: 0 });
+      foodsMap.set(key, { id: item.food_id ?? item.id, name: item.name, imageUrl: item.image_url, quantity: 0, revenue: 0 });
     }
     const row = foodsMap.get(key)!;
     row.quantity += Number(item.quantity ?? 0);
@@ -215,23 +314,76 @@ export const getDashboardAnalytics = async (
     return { label: r.label, value, changePercent: pct(value, prevValue) };
   });
 
-  const { revenueSeries, ordersSeries } = buildSeries(orders, range);
+  const getHourlySeries = async () => {
+    const hourlyRes = await supabase.rpc<HourlyRow>('get_hourly_revenue', {
+      p_branch_id: branchId,
+      p_date: dateString,
+    });
+    if (hourlyRes.error) throw hourlyRes.error;
+
+    const rows = hourlyRes.data ?? [];
+    const revenueSeries = rows.map((row) => ({ label: `${String(row.hour).padStart(2, '0')}:00`, revenue: Number(row.revenue ?? 0) }));
+    const ordersSeries = rows.map((row) => ({ label: `${String(row.hour).padStart(2, '0')}:00`, orders: Number(row.order_count ?? 0) }));
+    return { revenueSeries, ordersSeries };
+  };
+
+  const getBusyHours = async () => {
+    const activityRes = await supabase.rpc<HourlyRow>('get_hourly_activity', {
+      p_branch_id: branchId,
+      p_date: dateString,
+    });
+    if (activityRes.error) throw activityRes.error;
+
+    return (activityRes.data ?? []).map((row) => ({ hour: Number(row.hour), orders: Number(row.order_count ?? 0), revenue: Number(row.revenue ?? 0) }));
+  };
+
+  const getDailySeries = async () => {
+    const days = getDaysForRangeKey(rangeKey);
+    if (days === undefined) {
+      return buildSeries(orders, range);
+    }
+
+    const dailyRes = await supabase.rpc<DailyRow>('get_daily_revenue', {
+      p_branch_id: branchId,
+      p_days: days,
+    });
+    if (dailyRes.error) throw dailyRes.error;
+
+    const rows = dailyRes.data ?? [];
+    return {
+      revenueSeries: rows.map((row) => ({ label: row.date, revenue: Number(row.revenue ?? 0) })),
+      ordersSeries: rows.map((row) => ({ label: row.date, orders: Number(row.order_count ?? 0) })),
+    };
+  };
+
+  const { revenueSeries, ordersSeries } = useHourlyRpc
+    ? await getHourlySeries()
+    : await getDailySeries();
+
+  const busyHours = useHourlyRpc ? await getBusyHours() : Array.from(busyHoursMap.entries()).map(([hour, v]) => ({ hour, orders: v.orders, revenue: v.revenue }));
+
   return {
     kpis: {
-      revenue: { value: revenue, changePercent: pct(revenue, prevRevenue) },
-      orders: { value: orders.length, changePercent: pct(orders.length, prevOrders.length) },
-      averageOrderValue: { value: orders.length ? revenue / orders.length : 0, changePercent: pct(orders.length ? revenue / orders.length : 0, prevOrders.length ? prevRevenue / prevOrders.length : 0) },
-      cancelledOrders: { value: cancelled, changePercent: pct(cancelled, prevCancelled) },
+      revenue: { value: stats.total_revenue ?? 0, changePercent: pct(revenue, prevRevenue) },
+      orders: { value: stats.total_orders ?? 0, changePercent: pct(stats.total_orders ?? 0, prevOrders.length) },
+      averageOrderValue: { value: stats.avg_order ?? 0, changePercent: pct(stats.avg_order ?? 0, prevOrders.length ? prevRevenue / prevOrders.length : 0) },
+      cancelledOrders: { value: stats.cancelled_orders ?? 0, changePercent: pct(stats.cancelled_orders ?? 0, prevCancelled) },
       activeTables: {
-        occupied: tables.filter((t) => t.status === 'occupied').length,
-        total: tables.length,
+        occupied: stats.active_tables ?? 0,
+        total: stats.total_tables ?? 0,
       },
     },
     revenueSeries,
     ordersSeries,
     paymentMethods: Array.from(paymentMap.entries()).map(([k, v]) => ({ name: PM_LABELS[k] ?? k, value: v.count, amount: v.amount })),
-    bestSellingFoods: Array.from(foodsMap.values()).sort((a, b) => b.quantity - a.quantity).slice(0, 5),
-    busyHours: Array.from(busyHoursMap.entries()).map(([hour, v]) => ({ hour, orders: v.orders, revenue: v.revenue })),
+    bestSellingFoods: bestSellingFoods.map((row) => ({
+      id: row.food_id,
+      name: row.name,
+      imageUrl: row.image_url,
+      quantity: Number(row.total_quantity ?? 0),
+      revenue: Number(row.total_revenue ?? 0),
+    })),
+    busyHours,
     dailyComparison,
   };
 };

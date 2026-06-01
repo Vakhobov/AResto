@@ -1,3 +1,4 @@
+import { formatPrice } from '@/lib/currency';
 import type { BestSellingFoodItem } from '@/types/dashboard';
 
 export const BestSellingFoods = ({ items }: { items: BestSellingFoodItem[] }) => (
@@ -12,7 +13,7 @@ export const BestSellingFoods = ({ items }: { items: BestSellingFoodItem[] }) =>
             <p className="truncate text-sm font-medium">{item.name}</p>
             <p className="text-xs text-white/60">{item.quantity} ta</p>
           </div>
-          <p className="text-sm text-white/90">{Math.round(item.revenue).toLocaleString('ru-RU')} so'm</p>
+          <p className="text-sm text-white/90">{formatPrice(item.revenue)}</p>
         </div>
       ))}
     </div>

@@ -1,7 +1,8 @@
 import { TrendingDown, TrendingUp, Wallet, ShoppingBag, CircleOff, Armchair } from 'lucide-react';
 import type { DashboardKpis } from '@/types/dashboard';
+import { formatPrice } from '@/lib/currency';
 
-const sum = (v: number) => `${Math.round(v).toLocaleString('ru-RU')} so'm`;
+const sum = (v: number) => formatPrice(v);
 const change = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 
 const KpiCard = ({ title, value, delta, icon: Icon }: { title: string; value: string; delta: number; icon: any }) => (

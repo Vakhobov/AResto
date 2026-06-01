@@ -12,6 +12,8 @@ import { BestSellingFoods } from '@/components/dashboard/BestSellingFoods';
 import { DailyComparison } from '@/components/dashboard/DailyComparison';
 import { BusyHoursHeatmap } from '@/components/dashboard/BusyHoursHeatmap';
 import { getDashboardAnalytics, resolveDateRange } from '@/services/dashboardService';
+import { subscribeToOrders } from '@/services/orderService';
+import { subscribeToTables } from '@/services/tableService';
 import type { DashboardAnalyticsData, DashboardRangeKey } from '@/types/dashboard';
 
 const emptyData: DashboardAnalyticsData = {
@@ -51,7 +53,7 @@ const AdminDashboard = () => {
     const fetchData = async () => {
       try {
         if (mounted) setLoading(true);
-        const res = await getDashboardAnalytics(branchId, activeRange);
+        const res = await getDashboardAnalytics(branchId, activeRange, range);
         if (mounted) setData(res);
       } finally {
         if (mounted) setLoading(false);
@@ -59,12 +61,23 @@ const AdminDashboard = () => {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 20000);
+
+    const unsubscribeOrders = subscribeToOrders(branchId, () => {
+      if (!mounted) return;
+      fetchData();
+    }, console.error);
+
+    const unsubscribeTables = subscribeToTables(branchId, () => {
+      if (!mounted) return;
+      fetchData();
+    }, console.error);
+
     return () => {
       mounted = false;
-      clearInterval(interval);
+      unsubscribeOrders();
+      unsubscribeTables();
     };
-  }, [branchId, activeRange]);
+  }, [branchId, activeRange, range]);
 
   const onCustomStart = (v: string) => {
     setCustomStart(v);
