@@ -17,6 +17,7 @@ import Login from './pages/Login';
 import Setup from './pages/Setup';
 import SuperAdmin from './pages/SuperAdmin';
 import NotFound from './pages/NotFound';
+import AdminDashboard from './pages/AdminDashboard';
 
 const queryClient = new QueryClient();
 
@@ -104,6 +105,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={['kitchen']}>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['kitchen']}>
+                  <AdminDashboard />
                 </ProtectedRoute>
               }
             />
