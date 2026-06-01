@@ -234,11 +234,6 @@ const Admin = () => {
           )}
 
           <Tabs defaultValue="shift" className="space-y-4 md:space-y-6">
-            <div className="flex justify-end">
-              <Button asChild className="rounded-xl bg-orange-500 text-white hover:bg-orange-400">
-                <Link to="/admin/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" />Dashboard</Link>
-              </Button>
-            </div>
             <TabsList className="bg-card border border-border rounded-xl p-1 w-full sm:w-auto flex">
               <TabsTrigger value="shift" className="flex-1 sm:flex-none rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 <Clock className="w-4 h-4" /><span className="hidden sm:inline">Smena</span>
@@ -252,6 +247,9 @@ const Admin = () => {
               <TabsTrigger value="orders" className="flex-1 sm:flex-none rounded-lg gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 <ClipboardList className="w-4 h-4" /><span className="hidden sm:inline">Buyurtmalar</span>
               </TabsTrigger>
+              <Button asChild variant="ghost" className="flex-1 sm:flex-none rounded-lg gap-2 px-3">
+                <Link to="/admin/dashboard"><LayoutDashboard className="w-4 h-4" /><span className="hidden sm:inline">Dashboard</span></Link>
+              </Button>
             </TabsList>
 
             {/* ── SHIFT TAB ─────────────────────────────────────────────────────── */}

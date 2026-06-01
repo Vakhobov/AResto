@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ClipboardList, ChefHat, LogOut, Package, LayoutDashboard, Clock3 } from 'lucide-react';
+import { ArrowLeft, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -13,14 +13,6 @@ import { DailyComparison } from '@/components/dashboard/DailyComparison';
 import { BusyHoursHeatmap } from '@/components/dashboard/BusyHoursHeatmap';
 import { getDashboardAnalytics, resolveDateRange } from '@/services/dashboardService';
 import type { DashboardAnalyticsData, DashboardRangeKey } from '@/types/dashboard';
-
-const nav = [
-  { label: 'Smena', icon: Clock3, to: '/admin' },
-  { label: 'Menyu', icon: ChefHat, to: '/admin' },
-  { label: 'Kategoriyalar', icon: Package, to: '/admin' },
-  { label: 'Buyurtmalar', icon: ClipboardList, to: '/admin' },
-  { label: 'Dashboard', icon: LayoutDashboard, to: '/admin/dashboard', active: true },
-];
 
 const emptyData: DashboardAnalyticsData = {
   kpis: {
@@ -98,14 +90,6 @@ const AdminDashboard = () => {
           <Button className="rounded-xl bg-orange-500 text-white hover:bg-orange-400" onClick={async () => { await logout(); navigate('/login', { replace: true }); }}>
             <LogOut className="mr-2 h-4 w-4" />Chiqish
           </Button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2 md:grid-cols-5">
-          {nav.map((n) => (
-            <Link key={n.label} to={n.to} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm ${n.active ? 'border border-orange-500 bg-orange-500/20 text-orange-300' : 'text-white/80 hover:bg-white/5'}`}>
-              <n.icon className="h-4 w-4" />{n.label}
-            </Link>
-          ))}
         </div>
 
         <DashboardFilters
