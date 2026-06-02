@@ -136,6 +136,8 @@ create table if not exists public.order_items (
   ingredients text[],
   model_3d_url text,
   ar_enabled boolean not null default false,
+  is_extra_order boolean not null default false,
+  extra_batch_id uuid,
   created_at timestamptz not null default now()
 );
 
@@ -302,7 +304,8 @@ create or replace function public.apply_shift_order_summary(
   p_shift_id uuid,
   p_order_total numeric,
   p_payment_method text,
-  p_items jsonb
+  p_items jsonb,
+  p_increment_order_count boolean default true
 )
 returns void
 language plpgsql
@@ -350,7 +353,7 @@ begin
 
   update public.shifts
   set
-    total_orders = total_orders + 1,
+    total_orders = total_orders + case when p_increment_order_count then 1 else 0 end,
     total_revenue = total_revenue + p_order_total,
     payment_summary = v_payment_summary,
     sold_items_summary = v_sold_summary
@@ -379,7 +382,10 @@ declare
   v_shift public.shifts%rowtype;
   v_order public.orders%rowtype;
   v_item jsonb;
+  v_batch_id uuid;
   v_order_number integer;
+  v_active_order_id uuid;
+  v_is_new_order boolean := true;
 begin
   if public.current_profile_role() <> 'menu' or public.current_profile_branch_id() <> p_branch_id then
     raise exception 'Faqat menu foydalanuvchisi o''z filialiga buyurtma yaratishi mumkin';
@@ -396,39 +402,91 @@ begin
     raise exception 'Smena ochilmagan. Oshxona hozir buyurtma qabul qilmaydi.';
   end if;
 
-  v_order_number := v_shift.total_orders + 1;
+  if p_table_number is not null then
+    select current_order_id into v_active_order_id
+    from public.restaurant_tables
+    where branch_id = p_branch_id and number = p_table_number and active = true
+    for update;
 
-  insert into public.orders (
-    branch_id,
-    shift_id,
-    menu_user_id,
-    order_number,
-    subtotal,
-    service_fee,
-    total,
-    service_type,
-    order_type,
-    table_number,
-    payment_method,
-    payment_status,
-    status
-  )
-  values (
-    p_branch_id,
-    v_shift.id,
-    auth.uid(),
-    v_order_number,
-    p_subtotal,
-    p_service_fee,
-    p_total,
-    p_service_type,
-    p_order_type,
-    p_table_number,
-    p_payment_method,
-    p_payment_status,
-    'new'
-  )
-  returning * into v_order;
+    if v_active_order_id is not null then
+      select * into v_order
+      from public.orders
+      where id = v_active_order_id
+        and branch_id = p_branch_id
+        and status in ('new', 'pending', 'preparing', 'ready')
+      for update;
+
+      if found then
+        v_is_new_order := false;
+      end if;
+    end if;
+  end if;
+
+  if v_is_new_order then
+    v_order_number := v_shift.total_orders + 1;
+
+    insert into public.orders (
+      branch_id,
+      shift_id,
+      menu_user_id,
+      order_number,
+      subtotal,
+      service_fee,
+      total,
+      service_type,
+      order_type,
+      table_number,
+      payment_method,
+      payment_status,
+      status
+    )
+    values (
+      p_branch_id,
+      v_shift.id,
+      auth.uid(),
+      v_order_number,
+      p_subtotal,
+      p_service_fee,
+      p_total,
+      p_service_type,
+      p_order_type,
+      p_table_number,
+      p_payment_method,
+      p_payment_status,
+      'new'
+    )
+    returning * into v_order;
+
+    if p_table_number is not null then
+      update public.restaurant_tables
+      set
+        status = 'occupied',
+        current_order_id = v_order.id
+      where branch_id = p_branch_id
+        and number = p_table_number
+        and active = true;
+    end if;
+  else
+    update public.orders
+    set
+      status = 'new',
+      subtotal = subtotal + p_subtotal,
+      service_fee = service_fee + p_service_fee,
+      total = total + p_total,
+      updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+  end if;
+
+  if not v_is_new_order then
+    -- demote any previous extra-order items so only the newest batch remains marked as extra
+    update public.order_items
+    set is_extra_order = false,
+        extra_batch_id = null
+    where order_id = v_order.id and is_extra_order = true;
+
+    v_batch_id := gen_random_uuid();
+  end if;
 
   for v_item in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb))
   loop
@@ -443,7 +501,9 @@ begin
       description,
       ingredients,
       model_3d_url,
-      ar_enabled
+      ar_enabled,
+      is_extra_order,
+      extra_batch_id
     )
     values (
       v_order.id,
@@ -460,7 +520,9 @@ begin
         else null
       end,
       v_item ->> 'model_3d_url',
-      coalesce((v_item ->> 'ar_enabled')::boolean, false)
+      coalesce((v_item ->> 'ar_enabled')::boolean, false),
+      not v_is_new_order,
+      case when not v_is_new_order then v_batch_id else null end
     );
   end loop;
 
@@ -468,14 +530,15 @@ begin
     v_shift.id,
     p_total,
     coalesce(p_payment_method, 'cash'),
-    p_items
+    p_items,
+    v_is_new_order
   );
 
   return v_order;
 end;
 $$;
 
-revoke execute on function public.apply_shift_order_summary(uuid, numeric, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.apply_shift_order_summary(uuid, numeric, text, jsonb, boolean) from public, anon, authenticated;
 grant execute on function public.create_order_with_items(uuid, jsonb, numeric, numeric, numeric, text, text, integer, text, text) to authenticated;
 
 create or replace function public.mark_table_occupied(

@@ -27,6 +27,8 @@ const rowToOrder = (row: any): Order => ({
     ingredients: oi.ingredients ?? undefined,
     modelUrl: oi.model_3d_url ?? undefined,
     hasAR: Boolean(oi.ar_enabled),
+    isExtraOrder: Boolean(oi.is_extra_order),
+    extraBatchId: oi.extra_batch_id ?? null,
     available: true,
   })),
   subtotal: Number(row.subtotal ?? row.total),

@@ -102,6 +102,8 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
   const activeStep = getOrderStatusStepIndex(trackedOrder.status);
   const status = normalizeOrderStatus(trackedOrder.status);
   const paymentPaid = trackedOrder.paymentStatus !== 'unpaid';
+  const progressWidthClasses = ['w-0', 'w-1/4', 'w-1/2', 'w-3/4', 'w-full'];
+  const progressWidthClass = progressWidthClasses[Math.min(Math.max(0, activeStep), progressWidthClasses.length - 1)];
 
   const handleRefresh = async () => {
     setTrackedOrder(await getOrderById(branchId, trackedOrder.id) ?? trackedOrder);
@@ -158,8 +160,7 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
               <div className="relative grid grid-cols-4 gap-2">
                 <div className="absolute left-[12.5%] right-[12.5%] top-6 h-1 rounded-full bg-secondary" />
                 <div
-                  className="absolute left-[12.5%] top-6 h-1 rounded-full bg-primary transition-all"
-                  style={{ width: `${Math.max(0, activeStep) * 25}%` }}
+                  className={`absolute left-[12.5%] top-6 h-1 rounded-full bg-primary transition-all ${progressWidthClass}`}
                 />
                 {orderStatusSteps.map((step, index) => {
                   const StepIcon = statusIcons[step];
@@ -247,16 +248,42 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
           <aside className="bg-card border border-border rounded-3xl p-5 md:p-6 shadow-card">
             <h2 className="text-lg font-bold text-foreground">Buyurtma tarkibi</h2>
             <div className="mt-4 space-y-3">
-              {trackedOrder.items.map((item) => (
-                <div key={item.id} className="flex gap-3 rounded-2xl bg-secondary/30 p-3">
-                  <img src={item.image} alt={item.name} className="h-16 w-16 rounded-xl object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-1 font-semibold text-foreground">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">x{item.quantity}</p>
-                    <p className="text-sm font-semibold text-primary">{formatPrice(item.price * item.quantity)}</p>
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                const normal = trackedOrder.items.filter(i => !i.isExtraOrder);
+                const extra = trackedOrder.items.filter(i => i.isExtraOrder);
+                return (
+                  <>
+                    {normal.map(item => (
+                      <div key={`n-${item.id}`} className="flex gap-3 rounded-2xl bg-secondary/30 p-3">
+                        <img src={item.image} alt={item.name} className="h-16 w-16 rounded-xl object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 font-semibold text-foreground">{item.name}</p>
+                          <p className="text-sm text-muted-foreground">x{item.quantity}</p>
+                          <p className="text-sm font-semibold text-primary">{formatPrice(item.price * item.quantity)}</p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {extra.length > 0 && (
+                      <div>
+                        <div className="text-sm text-white/60 uppercase mb-2">Extra order</div>
+                        <div className="space-y-3">
+                          {extra.map(item => (
+                            <div key={`e-${item.id}`} className="flex gap-3 rounded-2xl bg-secondary/30 p-3">
+                              <img src={item.image} alt={item.name} className="h-16 w-16 rounded-xl object-cover" />
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-1 font-semibold text-foreground">{item.name}</p>
+                                <p className="text-sm text-muted-foreground">x{item.quantity}</p>
+                                <p className="text-sm font-semibold text-primary">{formatPrice(item.price * item.quantity)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             <div className="mt-5 space-y-2 border-t border-border pt-4">

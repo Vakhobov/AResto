@@ -15,6 +15,8 @@ export type Category = string;
 
 export interface CartItem extends MenuItem {
   quantity: number;
+  isExtraOrder?: boolean;
+  extraBatchId?: string | null;
 }
 
 export type OrderType = 'dine-in' | 'take-out';

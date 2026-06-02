@@ -16,6 +16,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge';
 import { Order } from '@/types/kiosk';
 import { formatPrice } from '@/lib/currency';
+import OrderItemsList from '@/components/shared/OrderItemsList';
 import {
   CanonicalOrderStatus,
   getNextOrderStatus,
@@ -153,15 +154,7 @@ const KitchenOrderCard = ({ order, onStatusChange }: KitchenOrderCardProps) => {
 
         <CardContent className="flex-1">
           <div className="space-y-2">
-            {order.items.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 text-lg md:text-xl text-foreground"
-              >
-                <span className="font-bold text-primary">{item.quantity}x</span>
-                <span>{item.name}</span>
-              </div>
-            ))}
+            <OrderItemsList items={order.items} />
           </div>
           <div className="mt-4 pt-3 border-t border-border">
             <div className="flex justify-between text-sm text-muted-foreground">

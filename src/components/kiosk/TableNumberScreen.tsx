@@ -35,7 +35,8 @@ export function TableNumberScreen({ language, branchId, onConfirm, onBack }: Tab
     return unsubscribe;
   }, [branchId]);
 
-  const availableTables = tables.length > 0 ? tables.filter(t => t.active && t.status === 'available') : [];
+  // Allow any active table (occupied or available) so customers can add extra items
+  const activeTables = tables.length > 0 ? tables.filter(t => t.active) : [];
   const maxTableNumber = tables.length > 0 ? Math.max(...tables.map(t => t.number)) : 50;
   const minTableNumber = tables.length > 0 ? Math.min(...tables.map(t => t.number)) : 1;
 
@@ -69,7 +70,7 @@ export function TableNumberScreen({ language, branchId, onConfirm, onBack }: Tab
 
   const tableNumber = parseInt(input, 10);
   const isValidTable = tables.length > 0
-    ? availableTables.some(t => t.number === tableNumber)
+    ? activeTables.some(t => t.number === tableNumber)
     : !isNaN(tableNumber) && tableNumber >= minTableNumber && tableNumber <= maxTableNumber;
 
   const handleDigit = (digit: string) => {

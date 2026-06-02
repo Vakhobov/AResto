@@ -223,13 +223,19 @@ export const OrderHistoryTable = ({ branchId }: OrderHistoryTableProps) => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="max-w-[200px]">
-                        {order.items.map((item, idx) => (
-                          <span key={item.id} className="text-sm text-muted-foreground">
-                            {item.quantity}x {item.name}
-                            {idx < order.items.length - 1 ? ', ' : ''}
-                          </span>
-                        ))}
+                      <div className="max-w-[200px] text-sm text-muted-foreground">
+                        {(() => {
+                          const normal = order.items.filter(i => !i.isExtraOrder).map(i => `${i.quantity}x ${i.name}`);
+                          const extra = order.items.filter(i => i.isExtraOrder).map(i => `${i.quantity}x ${i.name}`);
+                          return (
+                            <div>
+                              <div>{normal.join(', ')}</div>
+                              {extra.length > 0 && (
+                                <div className="text-xs text-muted-foreground">Extra: {extra.join(', ')}</div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell className="font-semibold text-foreground whitespace-nowrap">

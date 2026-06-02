@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Printer, UtensilsCrossed, ShoppingBag, User, ConciergeBell, MapPin, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/currency';
+import OrderItemsList from '@/components/shared/OrderItemsList';
 
 interface ReceiptScreenProps {
   order: Order;
@@ -125,17 +126,7 @@ export function ReceiptScreen({ order, onBack, onNewOrder }: ReceiptScreenProps)
           <div className="mb-6 pb-6 border-b border-dashed border-border">
             <h3 className="font-semibold text-foreground mb-4">Buyurtma tarkibi</h3>
             <div className="space-y-3">
-              {order.items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <div className="flex-1">
-                    <span className="text-foreground">{item.name}</span>
-                    <span className="text-muted-foreground ml-2">x{item.quantity}</span>
-                  </div>
-                  <span className="text-foreground font-medium">
-                    {formatPrice(item.price * item.quantity)}
-                  </span>
-                </div>
-              ))}
+              <OrderItemsList items={order.items} />
             </div>
           </div>
 
