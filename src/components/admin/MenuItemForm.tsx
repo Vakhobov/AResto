@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { supabase } from '@/lib/supabase';
 
 interface MenuItemFormProps {
   item: MenuItem | null;
@@ -31,6 +32,9 @@ export const MenuItemForm = ({ item, categories: formCategories = categories, on
     image: string;
     category: Category;
     available: boolean;
+    has3d: boolean;
+    modelFile?: File | null;
+    modelUrl?: string | null;
   }>({
     name: item?.name || '',
     description: item?.description || '',
@@ -38,18 +42,61 @@ export const MenuItemForm = ({ item, categories: formCategories = categories, on
     image: item?.image || '',
     category: item?.category || 'tacos',
     available: item?.available ?? true,
+    has3d: Boolean(item?.hasAR || item?.modelUrl),
+    modelFile: null,
+    modelUrl: item?.modelUrl ?? null,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      name: formData.name,
-      description: formData.description,
-      price: parseFloat(formData.price) || 0,
-      image: formData.image,
-      category: formData.category as Category,
-      available: formData.available,
-    });
+    setError(null);
+    setSaving(true);
+
+    try {
+      if (formData.has3d && !formData.modelFile && !formData.modelUrl) {
+        throw new Error('Please upload a .glb file or keep an existing 3D model URL.');
+      }
+
+      let uploadedModelUrl = formData.modelUrl ?? null;
+
+      // If a model file was selected, upload to Supabase Storage (bucket: models)
+      if (formData.modelFile) {
+        const file = formData.modelFile;
+        const filePath = `models/${Date.now()}_${file.name}`;
+        const { error: uploadErr } = await supabase.storage.from('models').upload(filePath, file, {
+          contentType: 'model/gltf-binary',
+          upsert: true,
+        });
+        if (uploadErr) {
+          console.error('Model upload failed', uploadErr);
+          throw uploadErr;
+        }
+
+        const { data: pub } = supabase.storage.from('models').getPublicUrl(filePath);
+        uploadedModelUrl = pub.publicUrl ?? null;
+      }
+
+      await onSubmit({
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price) || 0,
+        image: formData.image,
+        category: formData.category as Category,
+        available: formData.available,
+        hasAR: formData.has3d,
+        modelUrl: uploadedModelUrl ?? undefined,
+      });
+    } catch (err: any) {
+      const message = err?.message ?? 'Unknown error while saving';
+      console.error('Menu item save error:', err);
+      setError(message);
+      return;
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -160,6 +207,39 @@ export const MenuItemForm = ({ item, categories: formCategories = categories, on
           </div>
 
           <div className="flex items-center justify-between py-2">
+            <Label htmlFor="has3d">Has 3D model (.glb)</Label>
+            <Switch
+              id="has3d"
+              checked={formData.has3d}
+              onCheckedChange={(checked) => setFormData({ ...formData, has3d: Boolean(checked) })}
+            />
+          </div>
+
+          {formData.has3d && (
+            <div className="space-y-2">
+              <Label htmlFor="model-file">Upload .glb model</Label>
+              <input
+                id="model-file"
+                type="file"
+                accept=".glb"
+                title="Upload .glb 3D model"
+                aria-label="Upload .glb 3D model"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setFormData({ ...formData, modelFile: f });
+                }}
+                className="rounded-xl"
+              />
+              {formData.modelUrl && (
+                <div className="text-sm text-muted-foreground">Existing model: <a href={formData.modelUrl} target="_blank" rel="noreferrer" className="text-primary underline">Open</a></div>
+              )}
+              {formData.modelFile && (
+                <div className="text-sm">Selected: {formData.modelFile.name}</div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between py-2">
             <Label htmlFor="available">Available</Label>
             <Switch
               id="available"
@@ -168,17 +248,28 @@ export const MenuItemForm = ({ item, categories: formCategories = categories, on
             />
           </div>
 
+          {error && (
+            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
           <div className="flex gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
               className="flex-1 rounded-xl"
+              disabled={saving}
             >
               Cancel
             </Button>
-            <Button type="submit" className="flex-1 rounded-xl bg-primary hover:bg-primary/90">
-              {item ? 'Save Changes' : 'Add Item'}
+            <Button
+              type="submit"
+              className="flex-1 rounded-xl bg-primary hover:bg-primary/90"
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : item ? 'Save Changes' : 'Add Item'}
             </Button>
           </div>
         </form>

@@ -28,6 +28,8 @@ app.use((req, res, next) => {
 const rawUrl       = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const supabaseUrl  = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
 const serviceKey   = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const superAdminEmail = process.env.SUPERADMIN_EMAIL || process.env.VITE_SUPERADMIN_EMAIL || '';
+const superAdminPassword = process.env.SUPERADMIN_PASSWORD || '';
 
 if (!supabaseUrl || !serviceKey) {
   console.error('❌  Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env');
@@ -69,8 +71,9 @@ app.post('/api/admin-users', async (req, res) => {
 
     // ── seedSuperAdmin ────────────────────────────────────────────────────────
     if (action === 'seedSuperAdmin') {
-      const email    = body.email    ?? 'superadmin@aresto.com';
-      const password = body.password ?? 'Admin1234!';
+      const email    = body.email    ?? superAdminEmail;
+      const password = body.password ?? superAdminPassword;
+      if (!email || !password) throw new Error('Missing superadmin email or password in request or environment');
 
       const { data: existing } = await supabase.from('profiles').select('id').eq('role', 'superadmin').limit(1);
       if (existing?.length > 0) {

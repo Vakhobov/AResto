@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 const rawSupabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+const superAdminEmail = process.env.SUPERADMIN_EMAIL || process.env.VITE_SUPERADMIN_EMAIL || '';
+const superAdminPassword = process.env.SUPERADMIN_PASSWORD || '';
 
 const adminClient = () => {
   if (!supabaseUrl || !serviceRoleKey) {
@@ -97,11 +99,10 @@ export default async function handler(req: any, res: any) {
     const action = body?.action;
 
     if (action === 'seedSuperAdmin') {
-      const result = await seedSuperAdmin(
-        supabase,
-        body?.email ?? 'superadmin@aresto.com',
-        body?.password ?? 'Admin1234!',
-      );
+      const email = body?.email ?? superAdminEmail;
+      const password = body?.password ?? superAdminPassword;
+      if (!email || !password) throw new Error('Missing superadmin email or password in request or environment');
+      const result = await seedSuperAdmin(supabase, email, password);
       res.status(200).json(result);
       return;
     }

@@ -122,13 +122,19 @@ export const updateFirebaseUserCredentials = async (
 };
 
 export const seedSuperAdmin = async (): Promise<void> => {
+  const email = import.meta.env.VITE_SUPERADMIN_EMAIL ?? '';
+  const password = import.meta.env.VITE_SUPERADMIN_PASSWORD ?? '';
+  if (!email || !password) {
+    throw new Error('Missing VITE_SUPERADMIN_EMAIL or VITE_SUPERADMIN_PASSWORD');
+  }
+
   const res = await fetch('/api/admin-users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'seedSuperAdmin',
-      email: 'superadmin@aresto.com',
-      password: 'Admin1234!',
+      email,
+      password,
     }),
   });
 

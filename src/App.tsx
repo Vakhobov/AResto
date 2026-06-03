@@ -14,7 +14,6 @@ import Index from './pages/Index';
 import Admin from './pages/Admin';
 import Kitchen from './pages/Kitchen';
 import Login from './pages/Login';
-import Setup from './pages/Setup';
 import SuperAdmin from './pages/SuperAdmin';
 import NotFound from './pages/NotFound';
 import AdminDashboard from './pages/AdminDashboard';
@@ -77,7 +76,6 @@ const App = () => {
           <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
-            <Route path="/setup" element={<Setup />} />
 
             {/* Menu role — customer ordering */}
             <Route

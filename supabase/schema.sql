@@ -236,35 +236,35 @@ create policy categories_select on public.categories for select
 using (public.can_access_branch(branch_id));
 drop policy if exists categories_write on public.categories;
 create policy categories_write on public.categories for all
-using (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id))
-with check (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id));
+using (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id))
+with check (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id));
 
 drop policy if exists foods_select on public.foods;
 create policy foods_select on public.foods for select
 using (public.can_access_branch(branch_id));
 drop policy if exists foods_write on public.foods;
 create policy foods_write on public.foods for all
-using (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id))
-with check (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id));
+using (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id))
+with check (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id));
 
 drop policy if exists tables_select on public.restaurant_tables;
 create policy tables_select on public.restaurant_tables for select
 using (public.can_access_branch(branch_id));
 drop policy if exists tables_write on public.restaurant_tables;
 create policy tables_write on public.restaurant_tables for all
-using (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id))
-with check (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id));
+using (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id))
+with check (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id));
 
 drop policy if exists shifts_select on public.shifts;
 create policy shifts_select on public.shifts for select
 using (public.can_access_branch(branch_id));
 drop policy if exists shifts_insert on public.shifts;
 create policy shifts_insert on public.shifts for insert
-with check (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id));
+with check (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id));
 drop policy if exists shifts_update on public.shifts;
 create policy shifts_update on public.shifts for update
-using (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id))
-with check (public.is_superadmin() or (public.current_profile_role() = 'kitchen' and public.current_profile_branch_id() = branch_id));
+using (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id))
+with check (public.is_superadmin() or (public.current_profile_role() in ('kitchen', 'menu') and public.current_profile_branch_id() = branch_id));
 
 drop policy if exists orders_select on public.orders;
 create policy orders_select on public.orders for select

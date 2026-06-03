@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Edit2, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Box, Edit2, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { MenuItem } from '@/types/kiosk';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/currency';
@@ -33,6 +33,12 @@ export const AdminMenuItemCard = ({
           alt={item.name}
           className="w-full h-32 object-cover"
         />
+        {(item.hasAR || Boolean(item.modelUrl)) && (
+          <div className="absolute left-3 top-3 rounded-full bg-primary/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-background flex items-center gap-1 shadow-lg">
+            <Box className="w-3 h-3" />
+            3D
+          </div>
+        )}
         {!item.available && (
           <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
             <span className="text-destructive font-semibold text-sm bg-background/90 px-3 py-1 rounded-full">
