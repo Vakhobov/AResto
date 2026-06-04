@@ -42,10 +42,13 @@ export interface Order {
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   shiftId?: string;
+  paymentMode?: 'prepaid' | 'postpaid';
+  paymentRequestedAt?: Date;
+  paymentCompletedAt?: Date;
 }
 
 export type Language = 'uz' | 'en' | 'ru';
 
 export type PaymentMethod = 'card' | 'nfc' | 'cash' | 'click' | 'payme' | 'uzum';
 
-export type Screen = 'intro' | 'table-select' | 'menu' | 'checkout' | 'payment' | 'confirmation' | 'receipt' | 'tracking';
+export type Screen = 'intro' | 'table-select' | 'menu' | 'checkout' | 'payment' | 'confirmation' | 'receipt' | 'tracking' | 'pay-bill';

@@ -41,4 +41,6 @@ export interface Branch {
   kitchenCredentials?: BranchCredentials | null;
   menuCredentials?: BranchCredentials | null;
   createdAt: Date;
+  paymentMode?: 'prepaid' | 'postpaid';
+  tableCount?: number;
 }

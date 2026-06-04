@@ -6,6 +6,7 @@ interface IntroScreenProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   onSelectOrderType: (type: OrderType) => void;
+  paymentMode?: 'prepaid' | 'postpaid';
 }
 
 const translations = {
@@ -47,7 +48,7 @@ const languages: { code: Language; flag: string }[] = [
   { code: 'ru', flag: 'RU' },
 ];
 
-export function IntroScreen({ language, onLanguageChange, onSelectOrderType }: IntroScreenProps) {
+export function IntroScreen({ language, onLanguageChange, onSelectOrderType, paymentMode }: IntroScreenProps) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -78,7 +79,7 @@ export function IntroScreen({ language, onLanguageChange, onSelectOrderType }: I
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="flex flex-col sm:flex-row gap-4 md:gap-6 lg:gap-10 w-full max-w-2xl px-4"
+        className="flex flex-col sm:flex-row gap-4 md:gap-6 lg:gap-10 w-full max-w-2xl px-4 justify-center"
       >
         {/* Dine In Button */}
         <motion.button
@@ -99,22 +100,24 @@ export function IntroScreen({ language, onLanguageChange, onSelectOrderType }: I
         </motion.button>
 
         {/* Take Out Button */}
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onSelectOrderType('take-out')}
-          className="group flex-1 min-h-[180px] sm:min-h-[240px] md:min-h-[280px] lg:min-h-[320px] rounded-3xl bg-card border-2 border-border hover:border-primary shadow-lg hover:shadow-xl transition-all duration-300 flex flex-col items-center justify-center gap-3 md:gap-4 p-4 md:p-6 touch-manipulation"
-        >
-          <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
-            <ShoppingBag className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-primary" />
-          </div>
-          <span className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground text-center">
-            {translations.takeOut[language]}
-          </span>
-          <span className="text-sm sm:text-base md:text-lg text-muted-foreground text-center">
-            {translations.takeOutSub[language]}
-          </span>
-        </motion.button>
+        {paymentMode !== 'postpaid' && (
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => onSelectOrderType('take-out')}
+            className="group flex-1 min-h-[180px] sm:min-h-[240px] md:min-h-[280px] lg:min-h-[320px] rounded-3xl bg-card border-2 border-border hover:border-primary shadow-lg hover:shadow-xl transition-all duration-300 flex flex-col items-center justify-center gap-3 md:gap-4 p-4 md:p-6 touch-manipulation"
+          >
+            <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
+              <ShoppingBag className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-primary" />
+            </div>
+            <span className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground text-center">
+              {translations.takeOut[language]}
+            </span>
+            <span className="text-sm sm:text-base md:text-lg text-muted-foreground text-center">
+              {translations.takeOutSub[language]}
+            </span>
+          </motion.button>
+        )}
       </motion.div>
 
       {/* Language Selector */}

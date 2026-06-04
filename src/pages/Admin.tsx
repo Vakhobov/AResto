@@ -13,6 +13,7 @@ import {
   Clock,
   Tag,
   LayoutDashboard,
+  Banknote,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MenuItem } from '@/types/kiosk';
@@ -201,6 +202,9 @@ const Admin = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button asChild variant="outline" className="hidden sm:flex gap-2 rounded-xl">
+                <Link to="/cashier"><Banknote className="w-5 h-5" />Kassa</Link>
+              </Button>
               <Button asChild className="hidden sm:flex gap-2 rounded-xl">
                 <Link to="/kitchen"><ChefHat className="w-5 h-5" />Oshxona</Link>
               </Button>
@@ -224,6 +228,9 @@ const Admin = () => {
 
           {mobileMenuOpen && (
             <div className="sm:hidden mb-4 p-4 bg-card border border-border rounded-xl space-y-2">
+              <Button asChild className="w-full gap-2 rounded-xl" variant="outline">
+                <Link to="/cashier"><Banknote className="w-5 h-5" />Kassa ko'rinishi</Link>
+              </Button>
               <Button asChild className="w-full gap-2 rounded-xl">
                 <Link to="/kitchen"><ChefHat className="w-5 h-5" />Oshxona ko'rinishi</Link>
               </Button>
@@ -249,6 +256,9 @@ const Admin = () => {
               </TabsTrigger>
               <Button asChild variant="ghost" className="flex-1 sm:flex-none rounded-lg gap-2 px-3">
                 <Link to="/admin/dashboard"><LayoutDashboard className="w-4 h-4" /><span className="hidden sm:inline">Dashboard</span></Link>
+              </Button>
+              <Button asChild variant="ghost" className="flex-1 sm:flex-none rounded-lg gap-2 px-3">
+                <Link to="/cashier"><Banknote className="w-4 h-4" /><span className="hidden sm:inline">Kassa</span></Link>
               </Button>
             </TabsList>
 

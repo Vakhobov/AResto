@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Users,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ import { Branch } from '@/types/auth';
 import { getBranches, createBranch, updateBranch, deleteBranch } from '@/services/branchService';
 import { createFirebaseUser, updateFirebaseUserCredentials } from '@/services/userProfileService';
 import { useToast } from '@/hooks/use-toast';
+import { provisionTablesForBranch } from '@/services/tableService';
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +62,16 @@ const BranchCard: React.FC<BranchCardProps> = ({ branch, onAddKitchen, onAddMenu
           <Building2 className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h3 className="font-semibold text-foreground">{branch.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-foreground">{branch.name}</h3>
+            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+              branch.paymentMode === 'postpaid' 
+                ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20' 
+                : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+            }`}>
+              {branch.paymentMode === 'postpaid' ? `Postpaid (${branch.tableCount || 0} st)` : 'Prepaid'}
+            </span>
+          </div>
           <p className="text-xs text-muted-foreground">ID: {branch.id.slice(0, 8)}...</p>
         </div>
       </div>
@@ -136,6 +147,11 @@ const SuperAdmin = () => {
   const [menuLogin, setMenuLogin] = useState('');
   const [menuPassword, setMenuPassword] = useState('');
 
+  const [paymentMode, setPaymentMode]   = useState<'prepaid' | 'postpaid'>('prepaid');
+  const [tableCount, setTableCount]     = useState<number>(10);
+  const [detailPaymentMode, setDetailPaymentMode] = useState<'prepaid' | 'postpaid'>('prepaid');
+  const [detailTableCount, setDetailTableCount]   = useState<number>(10);
+
   useEffect(() => {
     getBranches().then(b => { setBranches(b); setLoadingBranches(false); }).catch(() => setLoadingBranches(false));
   }, []);
@@ -152,6 +168,8 @@ const SuperAdmin = () => {
     setUserEmail('');
     setUserPassword('');
     setShowPwd(false);
+    setPaymentMode('prepaid');
+    setTableCount(10);
   };
 
   const closeBranchDetails = () => {
@@ -172,6 +190,8 @@ const SuperAdmin = () => {
     setMenuPassword(branch.menuCredentials?.password ?? '');
     setShowKitchenPwd(false);
     setShowMenuPwd(false);
+    setDetailPaymentMode(branch.paymentMode ?? 'prepaid');
+    setDetailTableCount(branch.tableCount ?? 10);
   };
 
   // ── Create branch ──────────────────────────────────────────────────────────
@@ -181,10 +201,46 @@ const SuperAdmin = () => {
     if (!branchName.trim()) return;
     setSubmitting(true);
     try {
-      const branch = await createBranch({ name: branchName.trim(), active: true, kitchenUserId: null, menuUserId: null });
+      const branch = await createBranch({
+        name: branchName.trim(),
+        active: true,
+        kitchenUserId: null,
+        menuUserId: null,
+        paymentMode,
+        tableCount: paymentMode === 'postpaid' ? tableCount : undefined,
+      });
+      if (paymentMode === 'postpaid' && tableCount > 0) {
+        await provisionTablesForBranch(branch.id, tableCount);
+      }
       setBranches(prev => [...prev, branch]);
       toast({ title: "Filial yaratildi ✅", description: `"${branch.name}" muvaffaqiyatli qo'shildi.` });
       closeModal();
+    } catch (err) {
+      toast({ title: 'Xato', description: String(err), variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateBranchSettings = async () => {
+    if (!selectedBranch) return;
+    setSubmitting(true);
+    try {
+      const updates: Partial<Branch> = {
+        paymentMode: detailPaymentMode,
+        tableCount: detailPaymentMode === 'postpaid' ? detailTableCount : undefined,
+      };
+      await updateBranch(selectedBranch.id, updates);
+      if (detailPaymentMode === 'postpaid' && detailTableCount > 0) {
+        await provisionTablesForBranch(selectedBranch.id, detailTableCount);
+      }
+      await refreshBranches();
+      toast({ title: 'Saqlash muvaffaqiyatli', description: 'Filial sozlamalari yangilandi.' });
+      setSelectedBranch({
+        ...selectedBranch,
+        paymentMode: detailPaymentMode,
+        tableCount: detailPaymentMode === 'postpaid' ? detailTableCount : undefined,
+      });
     } catch (err) {
       toast({ title: 'Xato', description: String(err), variant: 'destructive' });
     } finally {
@@ -391,6 +447,49 @@ const SuperAdmin = () => {
                 <label className="text-sm font-medium text-foreground">Filial nomi</label>
                 <Input placeholder="Masalan: Chilonzor filiali" value={branchName} onChange={e => setBranchName(e.target.value)} className="bg-background border-border rounded-xl h-11" autoFocus />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">To'lov rejimi (Payment Mode)</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMode"
+                      value="prepaid"
+                      checked={paymentMode === 'prepaid'}
+                      onChange={() => setPaymentMode('prepaid')}
+                      className="accent-primary"
+                    />
+                    Prepaid (Oldindan to'lov)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMode"
+                      value="postpaid"
+                      checked={paymentMode === 'postpaid'}
+                      onChange={() => setPaymentMode('postpaid')}
+                      className="accent-primary"
+                    />
+                    Postpaid (Keyin to'lov)
+                  </label>
+                </div>
+              </div>
+
+              {paymentMode === 'postpaid' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Stollar soni (1-100)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={tableCount}
+                    onChange={e => setTableCount(Number(e.target.value))}
+                    className="bg-background border-border rounded-xl h-11"
+                  />
+                </div>
+              )}
+
               <Button type="submit" className="w-full h-11 rounded-xl gap-2" disabled={submitting || !branchName.trim()}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
                 Filial yaratish
@@ -470,6 +569,64 @@ const SuperAdmin = () => {
                       {selectedBranch.active ? 'Faol' : 'Nofaol'}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              {/* Branch settings (Payment Mode / Tables) */}
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-sm font-semibold text-foreground mb-3">Filial sozlamalari</p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">To'lov rejimi (Payment Mode)</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                        <input
+                          type="radio"
+                          name="detailPaymentMode"
+                          value="prepaid"
+                          checked={detailPaymentMode === 'prepaid'}
+                          onChange={() => setDetailPaymentMode('prepaid')}
+                          className="accent-primary"
+                        />
+                        Prepaid (Oldindan to'lov)
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                        <input
+                          type="radio"
+                          name="detailPaymentMode"
+                          value="postpaid"
+                          checked={detailPaymentMode === 'postpaid'}
+                          onChange={() => setDetailPaymentMode('postpaid')}
+                          className="accent-primary"
+                        />
+                        Postpaid (Keyin to'lov)
+                      </label>
+                    </div>
+                  </div>
+
+                  {detailPaymentMode === 'postpaid' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">Stollar soni (1-100)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={detailTableCount}
+                        onChange={e => setDetailTableCount(Number(e.target.value))}
+                        className="bg-background border-border rounded-xl h-11"
+                      />
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    className="w-full h-11 rounded-xl gap-2 bg-primary hover:bg-primary/90"
+                    onClick={handleUpdateBranchSettings}
+                    disabled={submitting}
+                  >
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+                    Sozlamalarni saqlash
+                  </Button>
                 </div>
               </div>
 

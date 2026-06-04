@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { Order, OrderStatus, PaymentStatus } from '@/types/kiosk';
 import { normalizeOrderStatus } from '@/lib/orderStatus';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { markTablePaymentPending, markTableAvailable } from './tableService';
 
 // ─── Row → domain ─────────────────────────────────────────────────────────────
 
@@ -42,6 +43,9 @@ const rowToOrder = (row: any): Order => ({
   paymentMethod: row.payment_method ?? undefined,
   paymentStatus: (row.payment_status ?? 'unpaid') as PaymentStatus,
   shiftId: row.shift_id ?? undefined,
+  paymentMode: (row.payment_mode ?? 'prepaid') as 'prepaid' | 'postpaid',
+  paymentRequestedAt: row.payment_requested_at ? new Date(row.payment_requested_at) : undefined,
+  paymentCompletedAt: row.payment_completed_at ? new Date(row.payment_completed_at) : undefined,
 });
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -79,8 +83,10 @@ export const createOrder = async (
 ): Promise<Order> => {
   if (!branchId) throw new Error('branchId is required');
 
+  const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
   const items = orderData.items.map(i => ({
-    food_id: i.id ?? null,
+    food_id: i.id && isUuid(i.id) ? i.id : null,
     name: i.name,
     price: i.price,
     quantity: i.quantity,
@@ -107,6 +113,14 @@ export const createOrder = async (
   });
 
   if (error) throw error;
+
+  // Set the payment_mode to postpaid if requested
+  if (orderData.paymentMode === 'postpaid') {
+    await supabase
+      .from('orders')
+      .update({ payment_mode: 'postpaid' })
+      .eq('id', data.id);
+  }
 
   // Fetch the full order with items
   const created = await getOrderById(branchId, data.id);
@@ -198,6 +212,57 @@ export const subscribeToOrder = (
     .subscribe();
 
   return () => { supabase.removeChannel(channel); };
+};
+
+export const requestCashierPayment = async (
+  branchId: string,
+  orderId: string,
+): Promise<void> => {
+  const order = await getOrderById(branchId, orderId);
+  if (!order) throw new Error('Order not found');
+
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      payment_status: 'pending',
+      payment_requested_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
+
+  if (order.tableNumber) {
+    await markTablePaymentPending(branchId, order.tableNumber);
+  }
+};
+
+export const completeCashierPayment = async (
+  branchId: string,
+  orderId: string,
+  method: string,
+  cashierId?: string,
+): Promise<void> => {
+  const order = await getOrderById(branchId, orderId);
+  if (!order) throw new Error('Order not found');
+
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'completed',
+      payment_status: 'paid',
+      payment_method: method,
+      payment_completed_at: new Date().toISOString(),
+      cashier_id: cashierId ?? null,
+    })
+    .eq('id', orderId)
+    .eq('branch_id', branchId);
+
+  if (error) throw error;
+
+  if (order.tableNumber) {
+    await markTableAvailable(branchId, order.tableNumber);
+  }
 };
 
 // No-op stub kept for compatibility — offline queuing is not needed with Supabase

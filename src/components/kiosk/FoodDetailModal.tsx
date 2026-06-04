@@ -223,17 +223,6 @@ export function FoodDetailModal({ item, isOpen, onClose, onAddToCart }: FoodDeta
                   Add to Cart - {formatPrice(item.price * quantity)}
                 </Button>
               </div>
-
-              {has3DModel && (
-                <Button
-                  variant="outline"
-                  className="w-full h-11 rounded-2xl text-base font-semibold border-primary/30 hover:bg-primary/10"
-                  onClick={() => setShowAR(true)}
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Kamerada ko'rish / View in AR
-                </Button>
-              )}
             </div>
           </motion.div>
 

@@ -6,7 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-export type TableStatus = 'available' | 'occupied' | 'reserved' | 'inactive';
+export type TableStatus = 'available' | 'occupied' | 'payment_pending' | 'reserved' | 'inactive';
 
 export interface RestaurantTable {
   id: string;
@@ -137,6 +137,40 @@ export const markTableAvailable = async (
   const table = await getTableByNumber(branchId, tableNumber);
   if (!table) return;
   await updateTable(branchId, table.id, { status: 'available', currentOrderId: undefined });
+};
+
+export const markTablePaymentPending = async (
+  branchId: string,
+  tableNumber: number,
+): Promise<void> => {
+  const table = await getTableByNumber(branchId, tableNumber);
+  if (!table) return;
+  await updateTable(branchId, table.id, { status: 'payment_pending' });
+};
+
+export const provisionTablesForBranch = async (
+  branchId: string,
+  count: number,
+): Promise<void> => {
+  const existingTables = await getTables(branchId);
+  const existingNumbers = new Set(existingTables.map(t => t.number));
+
+  const insertPromises = [];
+  for (let i = 1; i <= count; i++) {
+    if (!existingNumbers.has(i)) {
+      insertPromises.push(
+        createTable(branchId, {
+          number: i,
+          status: 'available',
+          active: true,
+        })
+      );
+    }
+  }
+
+  if (insertPromises.length > 0) {
+    await Promise.all(insertPromises);
+  }
 };
 
 // ─── Realtime subscription ────────────────────────────────────────────────────

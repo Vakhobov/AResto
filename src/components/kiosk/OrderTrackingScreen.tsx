@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Order } from '@/types/kiosk';
 import { getOrderById, subscribeToOrder } from '@/stores/orderStore';
+import { PayBillModal } from './PayBillModal';
 import {
   getOrderStatusStepIndex,
   normalizeOrderStatus,
@@ -47,6 +48,7 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(order);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPayBillModal, setShowPayBillModal] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToOrder(
@@ -303,9 +305,29 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
               </div>
             </div>
 
+            {trackedOrder.paymentMode === 'postpaid' && trackedOrder.paymentStatus === 'unpaid' && (
+              <Button
+                onClick={() => setShowPayBillModal(true)}
+                className="mt-4 h-12 w-full rounded-2xl bg-purple-600 hover:bg-purple-700 shadow-button"
+              >
+                <CreditCard className="mr-2 h-5 w-5" />
+                Hisobni to'lash (Pay Bill)
+              </Button>
+            )}
+
+            {trackedOrder.paymentMode === 'postpaid' && trackedOrder.paymentStatus === 'pending' && (
+              <Button
+                disabled
+                className="mt-4 h-12 w-full rounded-2xl bg-yellow-600/50 text-yellow-100 cursor-not-allowed shadow-none"
+              >
+                <Clock className="mr-2 h-5 w-5 animate-pulse" />
+                Kassir to'lovi kutilmoqda...
+              </Button>
+            )}
+
             <Button
               onClick={onNewOrder}
-              className="mt-6 h-12 w-full rounded-2xl bg-primary hover:bg-primary/90 shadow-button"
+              className="mt-4 h-12 w-full rounded-2xl bg-primary hover:bg-primary/90 shadow-button"
             >
               <Home className="mr-2 h-5 w-5" />
               Yangi buyurtma
@@ -313,6 +335,14 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
           </aside>
         </div>
       </main>
+
+      <PayBillModal
+        isOpen={showPayBillModal}
+        onClose={() => setShowPayBillModal(false)}
+        order={trackedOrder}
+        branchId={branchId}
+        onPaymentComplete={handleRefresh}
+      />
     </motion.div>
   );
 }

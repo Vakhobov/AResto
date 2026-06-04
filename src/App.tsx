@@ -13,6 +13,7 @@ import { syncOfflineOrders } from '@/services/orderService';
 import Index from './pages/Index';
 import Admin from './pages/Admin';
 import Kitchen from './pages/Kitchen';
+import Cashier from './pages/Cashier';
 import Login from './pages/Login';
 import SuperAdmin from './pages/SuperAdmin';
 import NotFound from './pages/NotFound';
@@ -111,6 +112,14 @@ const App = () => {
               element={
                 <ProtectedRoute allowedRoles={['kitchen']}>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cashier"
+              element={
+                <ProtectedRoute allowedRoles={['kitchen']}>
+                  <Cashier />
                 </ProtectedRoute>
               }
             />

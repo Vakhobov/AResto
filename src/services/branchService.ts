@@ -21,6 +21,8 @@ const rowToBranch = (row: any): Branch => ({
     ? { email: row.menu_credentials.email ?? '', password: row.menu_credentials.password ?? '' }
     : null,
   createdAt: new Date(row.created_at),
+  paymentMode: row.payment_mode ?? 'prepaid',
+  tableCount: row.table_count ?? undefined,
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +34,8 @@ export type BranchInput = {
   menuUserId?: string | null;
   kitchenCredentials?: { email: string; password: string } | null;
   menuCredentials?: { email: string; password: string } | null;
+  paymentMode?: 'prepaid' | 'postpaid';
+  tableCount?: number;
 };
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -46,6 +50,8 @@ export const createBranch = async (data: BranchInput): Promise<Branch> => {
       menu_user_id: data.menuUserId ?? null,
       kitchen_credentials: data.kitchenCredentials ?? null,
       menu_credentials: data.menuCredentials ?? null,
+      payment_mode: data.paymentMode ?? 'prepaid',
+      table_count: data.tableCount ?? null,
     })
     .select()
     .single();
@@ -65,6 +71,8 @@ export const updateBranch = async (
   if (data.menuUserId         !== undefined) update.menu_user_id        = data.menuUserId;
   if (data.kitchenCredentials !== undefined) update.kitchen_credentials = data.kitchenCredentials;
   if (data.menuCredentials    !== undefined) update.menu_credentials    = data.menuCredentials;
+  if (data.paymentMode        !== undefined) update.payment_mode        = data.paymentMode;
+  if (data.tableCount         !== undefined) update.table_count         = data.tableCount;
 
   const { error } = await supabase.from('branches').update(update).eq('id', branchId);
   if (error) throw error;

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Category, CartItem, MenuItem, Language, Screen, Order, PaymentMethod, OrderType, ServiceType } from '@/types/kiosk';
 import { saveOrder, updateOrderPaymentStatus, getOrderById } from '@/stores/orderStore';
 import { menuItems as fallbackMenuItems, categories as fallbackCategories } from '@/data/menuData';
+import { subscribeToBranchPaymentMode } from '@/services/paymentModeService';
 import { subscribeToFoods } from '@/services/foodService';
 import { subscribeToCategories } from '@/services/categoryService';
 import { markTableOccupied } from '@/services/tableService';
@@ -50,6 +51,7 @@ const Index = () => {
   const [activeShift, setActiveShift]       = useState<Shift | null>(null);
   const [shiftLoading, setShiftLoading]     = useState(true);
   const [shiftError, setShiftError]         = useState<string | null>(null);
+  const [paymentMode, setPaymentMode]       = useState<'prepaid' | 'postpaid'>('prepaid');
   const { toast } = useToast();
 
   const filteredItems = menuItems.filter(item => item.category === activeCategory);
@@ -96,7 +98,11 @@ const Index = () => {
       },
     );
 
-    return () => { unsubFoods(); unsubCats(); };
+    const unsubPaymentMode = subscribeToBranchPaymentMode(branchId, (mode) => {
+      setPaymentMode(mode);
+    });
+
+    return () => { unsubFoods(); unsubCats(); unsubPaymentMode(); };
   }, [branchId]);
 
   useEffect(() => {
@@ -130,6 +136,14 @@ const Index = () => {
     }
   }, [tableNumber]);
 
+  // For postpaid mode, skip order type selection and go directly to table selection
+  useEffect(() => {
+    if (paymentMode === 'postpaid' && screen === 'intro') {
+      setOrderType('dine-in');
+      setScreen('table-select');
+    }
+  }, [paymentMode, screen]);
+
   const addToCart = useCallback((item: MenuItem) => {
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
@@ -146,6 +160,75 @@ const Index = () => {
     setCart(prev => prev.filter(item => item.id !== id));
   }, []);
 
+  const handleCheckoutPostpaid = useCallback(async () => {
+    if (!branchId) {
+      toast({ title: 'Xato', description: 'Filial topilmadi.', variant: 'destructive' });
+      return;
+    }
+    if (orderType === 'dine-in' && !tableNumber) {
+      toast({ title: 'Stol raqami kerak', description: 'Dine-in buyurtma uchun stol raqamini kiriting.', variant: 'destructive' });
+      return;
+    }
+    if (cart.length === 0) {
+      toast({ title: "Savat bo'sh", description: 'Iltimos, avval mahsulot tanlang.', variant: 'destructive' });
+      return;
+    }
+    if (shiftLoading || !activeShift) {
+      toast({
+        title: 'Buyurtma qabul qilinmaydi',
+        description: shiftLoading ? 'Smena holati tekshirilmoqda.' : "Hozircha smena ochilmagan. Oshxona buyurtma qabul qilmaydi.",
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setCreatingOrder(true);
+    const subtotal    = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const serviceFee  = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
+    const total       = subtotal + serviceFee;
+    const orderNumber = pendingOrderNumber ?? activeShift.totalOrders + 1;
+
+    const order: Omit<Order, 'id'> = {
+      orderNumber,
+      items: cart.map(item => ({ ...item, quantity: Number(item.quantity ?? 1) })),
+      subtotal,
+      serviceFee,
+      total,
+      serviceType,
+      createdAt: new Date(),
+      status: 'new',
+      orderType,
+      paymentStatus: 'unpaid',
+      paymentMode: 'postpaid',
+      ...(orderType === 'dine-in' && tableNumber ? { tableNumber } : {}),
+    };
+
+    try {
+      const savedOrder = await saveOrder(branchId, order);
+      setCurrentOrder(savedOrder);
+      setCart([]);
+      setPendingOrderNumber(null);
+      setScreen('confirmation');
+
+      if (orderType === 'dine-in' && tableNumber) {
+        try {
+          await markTableOccupied(branchId, tableNumber, savedOrder.id);
+        } catch (tableError) {
+          console.error('Failed to mark table occupied:', tableError);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create postpaid order:', error);
+      toast({
+        title: 'Buyurtma saqlanmadi',
+        description: (error as any)?.message || "Noma'lum xato yuz berdi.",
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingOrder(false);
+    }
+  }, [activeShift, branchId, cart, orderType, pendingOrderNumber, serviceType, shiftLoading, tableNumber, toast]);
+
   const handleCheckout = useCallback(() => {
     if (cart.length === 0) return;
     if (shiftLoading || !activeShift) {
@@ -156,9 +239,13 @@ const Index = () => {
       });
       return;
     }
+    if (paymentMode === 'postpaid') {
+      handleCheckoutPostpaid();
+      return;
+    }
     setPendingOrderNumber(prev => prev ?? activeShift.totalOrders + 1);
     setScreen('payment');
-  }, [activeShift, cart.length, shiftLoading, toast]);
+  }, [activeShift, cart.length, shiftLoading, toast, paymentMode, handleCheckoutPostpaid]);
 
   const handlePaymentComplete = useCallback(async (method: PaymentMethod) => {
     if (!branchId) {
@@ -295,7 +382,7 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
       <AnimatePresence mode="wait">
         {screen === 'intro' && (
-          <IntroScreen language={language} onLanguageChange={setLanguage} onSelectOrderType={handleSelectOrderType} />
+          <IntroScreen language={language} onLanguageChange={setLanguage} onSelectOrderType={handleSelectOrderType} paymentMode={paymentMode} />
         )}
         {screen === 'table-select' && (
           <TableNumberScreen branchId={branchId} language={language} onConfirm={handleTableNumberConfirm} onBack={() => setScreen('intro')} />

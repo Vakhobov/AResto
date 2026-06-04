@@ -23,7 +23,6 @@ interface MobileCartDrawerProps {
   checkoutDisabled?: boolean;
   disabledMessage?: string;
 }
-
 const serviceTranslations = {
   selfService: {
     label: "O'z-o'ziga xizmat",
