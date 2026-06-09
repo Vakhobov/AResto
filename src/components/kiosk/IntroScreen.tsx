@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion';
 import { Language, OrderType } from '@/types/kiosk';
-import { UtensilsCrossed, ShoppingBag } from 'lucide-react';
+import { UtensilsCrossed, ShoppingBag, Clock } from 'lucide-react';
 
 interface IntroScreenProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   onSelectOrderType: (type: OrderType) => void;
+  onViewActiveOrders: () => void;
   paymentMode?: 'prepaid' | 'postpaid';
 }
 
@@ -40,6 +41,16 @@ const translations = {
     en: "Take it with you",
     ru: "Забрать с собой",
   },
+  activeOrders: {
+    uz: "Faol buyurtmalar",
+    en: "Active Orders",
+    ru: "Активные заказы",
+  },
+  activeOrdersSub: {
+    uz: "Mavjud buyurtmalarni ko'rish",
+    en: "View your active orders",
+    ru: "Посмотреть активные заказы",
+  },
 };
 
 const languages: { code: Language; flag: string }[] = [
@@ -48,7 +59,7 @@ const languages: { code: Language; flag: string }[] = [
   { code: 'ru', flag: 'RU' },
 ];
 
-export function IntroScreen({ language, onLanguageChange, onSelectOrderType, paymentMode }: IntroScreenProps) {
+export function IntroScreen({ language, onLanguageChange, onSelectOrderType, onViewActiveOrders, paymentMode }: IntroScreenProps) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -119,6 +130,20 @@ export function IntroScreen({ language, onLanguageChange, onSelectOrderType, pay
           </motion.button>
         )}
       </motion.div>
+
+      {/* Active Orders Button */}
+      <motion.button
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.25 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={onViewActiveOrders}
+        className="mt-6 flex items-center gap-3 px-6 py-4 rounded-2xl bg-primary/10 border-2 border-primary/30 hover:border-primary text-primary font-semibold transition-all"
+      >
+        <Clock className="w-5 h-5" />
+        <span>{translations.activeOrders[language]}</span>
+      </motion.button>
 
       {/* Language Selector */}
       <motion.div

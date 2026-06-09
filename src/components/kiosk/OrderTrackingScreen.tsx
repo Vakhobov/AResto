@@ -35,6 +35,7 @@ interface OrderTrackingScreenProps {
   branchId: string;
   onBack: () => void;
   onNewOrder: () => void;
+  isVerifiedCustomer?: boolean;
 }
 
 const statusIcons = {
@@ -44,7 +45,7 @@ const statusIcons = {
   served: Check,
 };
 
-export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: OrderTrackingScreenProps) {
+export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder, isVerifiedCustomer = false }: OrderTrackingScreenProps) {
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(order);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -330,7 +331,7 @@ export function OrderTrackingScreen({ order, branchId, onBack, onNewOrder }: Ord
               className="mt-4 h-12 w-full rounded-2xl bg-primary hover:bg-primary/90 shadow-button"
             >
               <Home className="mr-2 h-5 w-5" />
-              Yangi buyurtma
+              {isVerifiedCustomer ? "Buyurtmaga qo'shish" : "Yangi buyurtma"}
             </Button>
           </aside>
         </div>

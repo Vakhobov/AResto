@@ -14,6 +14,9 @@ interface CartPanelProps {
   onServiceTypeChange: (type: ServiceType) => void;
   checkoutDisabled?: boolean;
   disabledMessage?: string;
+  customerPhone: string;
+  onCustomerPhoneChange: (phone: string) => void;
+  skipPhoneInput?: boolean;
 }
 
 const serviceTranslations = {
@@ -37,6 +40,9 @@ export function CartPanel({
   onServiceTypeChange,
   checkoutDisabled = false,
   disabledMessage,
+  customerPhone,
+  onCustomerPhoneChange,
+  skipPhoneInput = false,
 }: CartPanelProps) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
@@ -174,6 +180,20 @@ export function CartPanel({
 
       {/* Checkout */}
       <div className="p-4 border-t border-border bg-background/50 space-y-2">
+        {/* Phone Input */}
+        {!skipPhoneInput && items.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Telefon raqami</label>
+            <input
+              type="tel"
+              value={customerPhone}
+              onChange={(e) => onCustomerPhoneChange(e.target.value)}
+              placeholder="+998 90 123 45 67"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              maxLength={13}
+            />
+          </div>
+        )}
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Oraliq jami</span>
           <span className="text-foreground">{formatPrice(subtotal)}</span>
@@ -190,13 +210,16 @@ export function CartPanel({
         </div>
         <Button
           onClick={onCheckout}
-          disabled={items.length === 0 || checkoutDisabled}
+          disabled={items.length === 0 || checkoutDisabled || (!skipPhoneInput && customerPhone.length < 9)}
           className="w-full h-14 text-lg font-semibold rounded-2xl bg-primary hover:bg-primary/90 shadow-button disabled:opacity-50 disabled:shadow-none"
         >
           Buyurtma berish
         </Button>
         {checkoutDisabled && disabledMessage && (
           <p className="text-xs text-center text-muted-foreground">{disabledMessage}</p>
+        )}
+        {!skipPhoneInput && customerPhone.length > 0 && customerPhone.length < 9 && (
+          <p className="text-xs text-center text-muted-foreground">Telefon raqami kamida 9 ta raqam bo'lishi kerak</p>
         )}
       </div>
     </aside>

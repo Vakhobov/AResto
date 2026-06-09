@@ -45,10 +45,12 @@ export interface Order {
   paymentMode?: 'prepaid' | 'postpaid';
   paymentRequestedAt?: Date;
   paymentCompletedAt?: Date;
+  customerPhone?: string;
+  phoneLast4?: string;
 }
 
 export type Language = 'uz' | 'en' | 'ru';
 
 export type PaymentMethod = 'card' | 'nfc' | 'cash' | 'click' | 'payme' | 'uzum';
 
-export type Screen = 'intro' | 'table-select' | 'menu' | 'checkout' | 'payment' | 'confirmation' | 'receipt' | 'tracking' | 'pay-bill';
+export type Screen = 'intro' | 'table-select' | 'menu' | 'checkout' | 'payment' | 'confirmation' | 'receipt' | 'tracking' | 'pay-bill' | 'active-orders';

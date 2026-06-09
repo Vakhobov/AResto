@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Category, CartItem, MenuItem, Language, Screen, Order, PaymentMethod, OrderType, ServiceType } from '@/types/kiosk';
 import { saveOrder, updateOrderPaymentStatus, getOrderById } from '@/stores/orderStore';
+import { getActiveOrderByTableNumber, addExtraItemsToOrder } from '@/services/orderService';
 import { menuItems as fallbackMenuItems, categories as fallbackCategories } from '@/data/menuData';
 import { subscribeToBranchPaymentMode } from '@/services/paymentModeService';
 import { subscribeToFoods } from '@/services/foodService';
@@ -19,6 +20,9 @@ import { OrderTrackingScreen } from '@/components/kiosk/OrderTrackingScreen';
 import { IntroScreen } from '@/components/kiosk/IntroScreen';
 import { FoodDetailModal } from '@/components/kiosk/FoodDetailModal';
 import { TableNumberScreen } from '@/components/kiosk/TableNumberScreen';
+import { ActiveOrders } from '@/components/kiosk/ActiveOrders';
+import { PhoneVerificationModal } from '@/components/kiosk/PhoneVerificationModal';
+import { TablePhoneVerificationModal } from '@/components/kiosk/TablePhoneVerificationModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,6 +56,12 @@ const Index = () => {
   const [shiftLoading, setShiftLoading]     = useState(true);
   const [shiftError, setShiftError]         = useState<string | null>(null);
   const [paymentMode, setPaymentMode]       = useState<'prepaid' | 'postpaid'>('prepaid');
+  const [customerPhone, setCustomerPhone]   = useState('');
+  const [selectedOrderForVerification, setSelectedOrderForVerification] = useState<Order | null>(null);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [tableActiveOrder, setTableActiveOrder] = useState<Order | null>(null);
+  const [isTableVerificationModalOpen, setIsTableVerificationModalOpen] = useState(false);
   const { toast } = useToast();
 
   const filteredItems = menuItems.filter(item => item.category === activeCategory);
@@ -173,6 +183,14 @@ const Index = () => {
       toast({ title: "Savat bo'sh", description: 'Iltimos, avval mahsulot tanlang.', variant: 'destructive' });
       return;
     }
+    if (!isPhoneVerified && (!customerPhone || customerPhone.length < 9)) {
+      toast({
+        title: 'Telefon raqami kerak',
+        description: 'Iltimos, telefon raqamingizni kiriting (kamida 9 raqam).',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (shiftLoading || !activeShift) {
       toast({
         title: 'Buyurtma qabul qilinmaydi',
@@ -188,6 +206,40 @@ const Index = () => {
     const total       = subtotal + serviceFee;
     const orderNumber = pendingOrderNumber ?? activeShift.totalOrders + 1;
 
+    // If phone-verified and has current order, add as extra order
+    console.log('Postpaid checkout - isPhoneVerified:', isPhoneVerified, 'currentOrder:', currentOrder);
+    if (isPhoneVerified && currentOrder) {
+      console.log('Using extra order flow for order:', currentOrder.id);
+      try {
+        const extraItems = cart.map(item => ({
+          ...item,
+          quantity: Number(item.quantity ?? 1),
+        }));
+
+        // Add extra items to existing order in database
+        const updatedOrder = await addExtraItemsToOrder(
+          branchId,
+          currentOrder.id,
+          extraItems,
+          subtotal,
+          serviceFee,
+          total,
+        );
+
+        setCurrentOrder(updatedOrder);
+        setCart([]);
+        setScreen('confirmation');
+        toast({ title: 'Muvaffaqiyatli', description: 'Qo\'shimcha buyurtma qo\'shildi.' });
+      } catch (error) {
+        console.error('Extra order failed:', error);
+        toast({ title: 'Xato', description: 'Qo\'shimcha buyurtma saqlanmadi.', variant: 'destructive' });
+      } finally {
+        setCreatingOrder(false);
+      }
+      return;
+    }
+
+    const phoneLast4 = customerPhone.length >= 4 ? customerPhone.slice(-4) : '';
     const order: Omit<Order, 'id'> = {
       orderNumber,
       items: cart.map(item => ({ ...item, quantity: Number(item.quantity ?? 1) })),
@@ -200,6 +252,8 @@ const Index = () => {
       orderType,
       paymentStatus: 'unpaid',
       paymentMode: 'postpaid',
+      customerPhone,
+      phoneLast4,
       ...(orderType === 'dine-in' && tableNumber ? { tableNumber } : {}),
     };
 
@@ -227,7 +281,7 @@ const Index = () => {
     } finally {
       setCreatingOrder(false);
     }
-  }, [activeShift, branchId, cart, orderType, pendingOrderNumber, serviceType, shiftLoading, tableNumber, toast]);
+  }, [activeShift, branchId, cart, orderType, pendingOrderNumber, serviceType, shiftLoading, tableNumber, toast, isPhoneVerified, currentOrder]);
 
   const handleCheckout = useCallback(() => {
     if (cart.length === 0) return;
@@ -239,13 +293,21 @@ const Index = () => {
       });
       return;
     }
+    if (!customerPhone || customerPhone.length < 9) {
+      toast({
+        title: 'Telefon raqami kerak',
+        description: 'Iltimos, telefon raqamingizni kiriting (kamida 9 raqam).',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (paymentMode === 'postpaid') {
       handleCheckoutPostpaid();
       return;
     }
     setPendingOrderNumber(prev => prev ?? activeShift.totalOrders + 1);
     setScreen('payment');
-  }, [activeShift, cart.length, shiftLoading, toast, paymentMode, handleCheckoutPostpaid]);
+  }, [activeShift, cart.length, shiftLoading, toast, paymentMode, handleCheckoutPostpaid, customerPhone]);
 
   const handlePaymentComplete = useCallback(async (method: PaymentMethod) => {
     if (!branchId) {
@@ -258,6 +320,14 @@ const Index = () => {
     }
     if (cart.length === 0) {
       toast({ title: "Savat bo'sh", description: 'Iltimos, avval mahsulot tanlang.', variant: 'destructive' });
+      return;
+    }
+    if (!isPhoneVerified && (!customerPhone || customerPhone.length < 9)) {
+      toast({
+        title: 'Telefon raqami kerak',
+        description: 'Iltimos, telefon raqamingizni kiriting (kamida 9 raqam).',
+        variant: 'destructive',
+      });
       return;
     }
     if (shiftLoading || !activeShift) {
@@ -276,6 +346,40 @@ const Index = () => {
     const orderNumber = pendingOrderNumber ?? activeShift.totalOrders + 1;
     const paymentStatus = method === 'cash' ? 'unpaid' : 'paid';
 
+    // If phone-verified and has current order, add as extra order
+    console.log('Payment complete - isPhoneVerified:', isPhoneVerified, 'currentOrder:', currentOrder);
+    if (isPhoneVerified && currentOrder) {
+      console.log('Using extra order flow for order:', currentOrder.id);
+      try {
+        const extraItems = cart.map(item => ({
+          ...item,
+          quantity: Number(item.quantity ?? 1),
+        }));
+
+        // Add extra items to existing order in database
+        const updatedOrder = await addExtraItemsToOrder(
+          branchId,
+          currentOrder.id,
+          extraItems,
+          subtotal,
+          serviceFee,
+          total,
+        );
+
+        setCurrentOrder(updatedOrder);
+        setCart([]);
+        setScreen('confirmation');
+        toast({ title: 'Muvaffaqiyatli', description: 'Qo\'shimcha buyurtma qo\'shildi.' });
+      } catch (error) {
+        console.error('Extra order failed:', error);
+        toast({ title: 'Xato', description: 'Qo\'shimcha buyurtma saqlanmadi.', variant: 'destructive' });
+      } finally {
+        setCreatingOrder(false);
+      }
+      return;
+    }
+
+    const phoneLast4 = customerPhone.length >= 4 ? customerPhone.slice(-4) : '';
     const order: Omit<Order, 'id'> = {
       orderNumber,
       items: cart.map(item => ({ ...item, quantity: Number(item.quantity ?? 1) })),
@@ -288,6 +392,8 @@ const Index = () => {
       orderType,
       paymentMethod: method,
       paymentStatus,
+      customerPhone,
+      phoneLast4,
       ...(orderType === 'dine-in' && tableNumber ? { tableNumber } : {}),
     };
 
@@ -322,7 +428,7 @@ const Index = () => {
     } finally {
       setCreatingOrder(false);
     }
-  }, [activeShift, branchId, cart, currentOrder, orderType, pendingOrderNumber, serviceType, shiftLoading, tableNumber, toast]);
+  }, [activeShift, branchId, cart, currentOrder, orderType, pendingOrderNumber, serviceType, shiftLoading, tableNumber, toast, isPhoneVerified]);
 
   const handleNewOrder = useCallback(() => {
     setCart([]);
@@ -332,6 +438,7 @@ const Index = () => {
     setServiceType('self-service');
     setPendingOrderNumber(null);
     setTableNumber(null);
+    setCustomerPhone('');
     localStorage.removeItem('aresto-table-number');
   }, []);
 
@@ -347,10 +454,29 @@ const Index = () => {
     }
   }, []);
 
-  const handleTableNumberConfirm = useCallback((num: number) => {
+  const handleTableNumberConfirm = useCallback(async (num: number) => {
+    if (!branchId) return;
+
     setTableNumber(num);
-    setScreen('menu');
-  }, []);
+    localStorage.setItem('aresto-table-number', num.toString());
+
+    // Check for active order at this table
+    try {
+      const activeOrder = await getActiveOrderByTableNumber(branchId, num);
+      if (activeOrder && activeOrder.phoneLast4) {
+        // Active order exists, show verification modal
+        setTableActiveOrder(activeOrder);
+        setIsTableVerificationModalOpen(true);
+      } else {
+        // No active order, proceed to menu normally
+        setScreen('menu');
+      }
+    } catch (error) {
+      console.error('Error checking for active order:', error);
+      // Proceed to menu on error
+      setScreen('menu');
+    }
+  }, [branchId]);
 
   const handleTrackOrder = useCallback(async () => {
     if (currentOrder && branchId) {
@@ -358,6 +484,37 @@ const Index = () => {
     }
     setScreen('tracking');
   }, [currentOrder, branchId]);
+
+  const handleSelectActiveOrder = useCallback((order: Order) => {
+    setSelectedOrderForVerification(order);
+    setIsVerificationModalOpen(true);
+  }, []);
+
+  const handleOrderVerified = useCallback((order: Order) => {
+    setCurrentOrder(order);
+    setCustomerPhone(order.customerPhone || '');
+    setOrderType(order.orderType);
+    setTableNumber(order.tableNumber || null);
+    setIsVerificationModalOpen(false);
+    setSelectedOrderForVerification(null);
+    setScreen('tracking');
+  }, []);
+
+  const handleAddToExistingOrder = useCallback(() => {
+    if (currentOrder) {
+      setScreen('menu');
+    }
+  }, [currentOrder]);
+
+  const handleTablePhoneVerified = useCallback((order: Order) => {
+    console.log('Table phone verified - setting isPhoneVerified to true, currentOrder:', order.id);
+    setCurrentOrder(order);
+    setCustomerPhone(order.customerPhone || '');
+    setIsPhoneVerified(true);
+    setIsTableVerificationModalOpen(false);
+    setTableActiveOrder(null);
+    setScreen('menu');
+  }, []);
 
   const subtotal   = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const serviceFee = serviceType === 'waiter-service' ? subtotal * 0.10 : 0;
@@ -382,7 +539,10 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
       <AnimatePresence mode="wait">
         {screen === 'intro' && (
-          <IntroScreen language={language} onLanguageChange={setLanguage} onSelectOrderType={handleSelectOrderType} paymentMode={paymentMode} />
+          <IntroScreen language={language} onLanguageChange={setLanguage} onSelectOrderType={handleSelectOrderType} onViewActiveOrders={() => setScreen('active-orders')} paymentMode={paymentMode} />
+        )}
+        {screen === 'active-orders' && (
+          <ActiveOrders onSelectOrder={handleSelectActiveOrder} />
         )}
         {screen === 'table-select' && (
           <TableNumberScreen branchId={branchId} language={language} onConfirm={handleTableNumberConfirm} onBack={() => setScreen('intro')} />
@@ -420,7 +580,8 @@ const Index = () => {
               }
               setScreen('confirmation');
             }}
-            onNewOrder={handleNewOrder}
+            onNewOrder={selectedOrderForVerification ? handleAddToExistingOrder : handleNewOrder}
+            isVerifiedCustomer={!!selectedOrderForVerification}
           />
         )}
         {screen === 'receipt' && currentOrder && (
@@ -480,6 +641,9 @@ const Index = () => {
             onServiceTypeChange={setServiceType}
             checkoutDisabled={orderingDisabled}
             disabledMessage={orderingDisabledMessage}
+            customerPhone={customerPhone}
+            onCustomerPhoneChange={setCustomerPhone}
+            skipPhoneInput={isPhoneVerified}
           />
           <MobileCartDrawer
             items={cart}
@@ -491,11 +655,37 @@ const Index = () => {
             onServiceTypeChange={setServiceType}
             checkoutDisabled={orderingDisabled}
             disabledMessage={orderingDisabledMessage}
+            customerPhone={customerPhone}
+            onCustomerPhoneChange={setCustomerPhone}
+            skipPhoneInput={isPhoneVerified}
           />
         </>
       )}
 
       <FoodDetailModal item={selectedItem} isOpen={!!selectedItem} onClose={() => setSelectedItem(null)} onAddToCart={addToCart} />
+      
+      <PhoneVerificationModal
+        order={selectedOrderForVerification}
+        isOpen={isVerificationModalOpen}
+        onClose={() => {
+          setIsVerificationModalOpen(false);
+          setSelectedOrderForVerification(null);
+        }}
+        onVerified={handleOrderVerified}
+      />
+      
+      <TablePhoneVerificationModal
+        order={tableActiveOrder}
+        isOpen={isTableVerificationModalOpen}
+        onClose={() => {
+          setIsTableVerificationModalOpen(false);
+          setTableActiveOrder(null);
+          setTableNumber(null);
+          localStorage.removeItem('aresto-table-number');
+          setScreen('intro');
+        }}
+        onVerified={handleTablePhoneVerified}
+      />
     </div>
   );
 };

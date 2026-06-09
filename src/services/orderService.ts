@@ -46,6 +46,8 @@ const rowToOrder = (row: any): Order => ({
   paymentMode: (row.payment_mode ?? 'prepaid') as 'prepaid' | 'postpaid',
   paymentRequestedAt: row.payment_requested_at ? new Date(row.payment_requested_at) : undefined,
   paymentCompletedAt: row.payment_completed_at ? new Date(row.payment_completed_at) : undefined,
+  customerPhone: row.customer_phone ?? undefined,
+  phoneLast4: row.phone_last4 ?? undefined,
 });
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -73,6 +75,78 @@ export const getOrderById = async (branchId: string, orderId: string): Promise<O
 
   if (error) throw error;
   return data ? rowToOrder(data) : null;
+};
+
+export const getActiveOrderByTableNumber = async (
+  branchId: string,
+  tableNumber: number,
+): Promise<Order | null> => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('branch_id', branchId)
+    .eq('table_number', tableNumber)
+    .in('status', ['new', 'preparing', 'ready'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToOrder(data) : null;
+};
+
+export const addExtraItemsToOrder = async (
+  branchId: string,
+  orderId: string,
+  items: Order['items'],
+  subtotal: number,
+  serviceFee: number,
+  total: number,
+): Promise<Order> => {
+  console.log('addExtraItemsToOrder called with:', { branchId, orderId, items: items.length, subtotal, serviceFee, total });
+  if (!branchId) throw new Error('branchId is required');
+  if (!orderId) throw new Error('orderId is required');
+
+  const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+  const orderItems = items.map(i => ({
+    food_id: i.id && isUuid(i.id) ? i.id : null,
+    name: i.name,
+    price: i.price,
+    quantity: i.quantity,
+    image_url: i.image ?? '',
+    category_id: i.category ?? '',
+    description: i.description ?? null,
+    ingredients: i.ingredients ?? null,
+    model_3d_url: i.modelUrl ?? null,
+    ar_enabled: i.hasAR ?? false,
+  }));
+
+  // Call the SECURITY DEFINER RPC function
+  const { data, error } = await supabase.rpc('add_extra_items_to_order', {
+    p_branch_id: branchId,
+    p_order_id: orderId,
+    p_items: orderItems,
+    p_subtotal: subtotal,
+    p_service_fee: serviceFee,
+    p_total: total,
+  });
+
+  if (error) {
+    console.error('RPC error:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('Failed to add extra items: No data returned from RPC');
+  }
+
+  console.log('RPC returned order:', data.id);
+
+  // Fetch the updated order with items
+  const updatedOrder = await getOrderById(branchId, orderId);
+  if (!updatedOrder) throw new Error('Failed to retrieve updated order');
+  return updatedOrder;
 };
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -110,6 +184,8 @@ export const createOrder = async (
     p_table_number: orderData.tableNumber ?? null,
     p_payment_method: orderData.paymentMethod ?? null,
     p_payment_status: orderData.paymentStatus ?? 'unpaid',
+    p_customer_phone: orderData.customerPhone ?? null,
+    p_phone_last4: orderData.phoneLast4 ?? null,
   });
 
   if (error) throw error;

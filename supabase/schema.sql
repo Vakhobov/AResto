@@ -118,6 +118,8 @@ create table if not exists public.orders (
   payment_method text check (payment_method in ('card', 'nfc', 'cash', 'click', 'payme', 'uzum')),
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'pending', 'paid', 'failed')),
   status text not null default 'new' check (status in ('new', 'pending', 'preparing', 'ready', 'served', 'completed', 'cancelled')),
+  customer_phone text,
+  phone_last4 text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (shift_id, order_number)
@@ -371,7 +373,9 @@ create or replace function public.create_order_with_items(
   p_order_type text,
   p_table_number integer,
   p_payment_method text,
-  p_payment_status text
+  p_payment_status text,
+  p_customer_phone text default null,
+  p_phone_last4 text default null
 )
 returns public.orders
 language plpgsql
@@ -438,7 +442,9 @@ begin
       table_number,
       payment_method,
       payment_status,
-      status
+      status,
+      customer_phone,
+      phone_last4
     )
     values (
       p_branch_id,
@@ -453,7 +459,9 @@ begin
       p_table_number,
       p_payment_method,
       p_payment_status,
-      'new'
+      'new',
+      p_customer_phone,
+      p_phone_last4
     )
     returning * into v_order;
 
@@ -539,7 +547,7 @@ end;
 $$;
 
 revoke execute on function public.apply_shift_order_summary(uuid, numeric, text, jsonb, boolean) from public, anon, authenticated;
-grant execute on function public.create_order_with_items(uuid, jsonb, numeric, numeric, numeric, text, text, integer, text, text) to authenticated;
+grant execute on function public.create_order_with_items(uuid, jsonb, numeric, numeric, numeric, text, text, integer, text, text, text, text) to authenticated;
 
 create or replace function public.mark_table_occupied(
   p_branch_id uuid,
@@ -575,6 +583,115 @@ end;
 $$;
 
 grant execute on function public.mark_table_occupied(uuid, integer, uuid) to authenticated;
+
+create or replace function public.add_extra_items_to_order(
+  p_branch_id uuid,
+  p_order_id uuid,
+  p_items jsonb,
+  p_subtotal numeric,
+  p_service_fee numeric,
+  p_total numeric
+)
+returns public.orders
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_order public.orders%rowtype;
+  v_item jsonb;
+  v_extra_batch_id uuid;
+  v_ingredients text[];
+  v_ingredients_json jsonb;
+begin
+  if not public.can_access_branch(p_branch_id) then
+    raise exception 'Ruxsat yo''q';
+  end if;
+
+  -- Verify the order belongs to the branch
+  select * into v_order from public.orders
+  where id = p_order_id and branch_id = p_branch_id;
+
+  if v_order.id is null then
+    raise exception 'Buyurtma topilmadi';
+  end if;
+
+  -- Generate extra batch ID
+  v_extra_batch_id := gen_random_uuid();
+
+  -- Insert extra items into order_items
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    -- Safely handle ingredients: check type and convert appropriately
+    v_ingredients_json := v_item->'ingredients';
+    
+    if v_ingredients_json is null then
+      -- ingredients is null or missing
+      v_ingredients := null;
+    elsif jsonb_typeof(v_ingredients_json) = 'array' then
+      -- ingredients is a JSON array, convert to text[]
+      v_ingredients := array(select jsonb_array_elements_text(v_ingredients_json));
+    elsif jsonb_typeof(v_ingredients_json) = 'string' then
+      -- ingredients is a scalar string, convert to single-element array or null
+      -- If the string is empty or whitespace, treat as null
+      if trim(v_ingredients_json::text) = '' then
+        v_ingredients := null;
+      else
+        v_ingredients := array[trim(v_ingredients_json::text)];
+      end if;
+    else
+      -- ingredients is some other type (number, boolean, object), treat as null
+      v_ingredients := null;
+    end if;
+
+    insert into public.order_items (
+      order_id,
+      food_id,
+      name,
+      price,
+      quantity,
+      image_url,
+      category_id,
+      description,
+      ingredients,
+      model_3d_url,
+      ar_enabled,
+      is_extra_order,
+      extra_batch_id
+    )
+    values (
+      p_order_id,
+      (v_item->>'food_id')::uuid,
+      v_item->>'name',
+      (v_item->>'price')::numeric,
+      (v_item->>'quantity')::integer,
+      v_item->>'image_url',
+      v_item->>'category_id',
+      v_item->>'description',
+      v_ingredients,
+      v_item->>'model_3d_url',
+      (v_item->>'ar_enabled')::boolean,
+      true,
+      v_extra_batch_id
+    );
+  end loop;
+
+  -- Update order totals and status
+  update public.orders
+  set
+    subtotal = subtotal + p_subtotal,
+    service_fee = service_fee + p_service_fee,
+    total = total + p_total,
+    status = 'new',
+    updated_at = now()
+  where id = p_order_id and branch_id = p_branch_id;
+
+  -- Return the updated order
+  select * into v_order from public.orders where id = p_order_id;
+  return v_order;
+end;
+$$;
+
+grant execute on function public.add_extra_items_to_order(uuid, uuid, jsonb, numeric, numeric, numeric) to authenticated;
 
 -- Enable Supabase Realtime for these tables in Dashboard > Database > Replication,
 -- or run the statements below if the tables are not already in the publication.
