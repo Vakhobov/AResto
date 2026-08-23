@@ -1,13 +1,15 @@
 # AResto
 
-Restaurant management and ordering system built as a University Final Year Project.
+**Restaurant Management & Ordering System — University Final Year Project**
+
+A full-stack restaurant platform for managing orders, menu items, tables, shifts, payments, and restaurant operations.
 
 ## Features
 
 - Role-based workflows for Admin, Kitchen, and Menu Management
-- Restaurant orders, tables, shifts, and payments
+- Order, table, shift, and payment management
 - Atomic order creation with PostgreSQL functions
-- Real-time order updates with Supabase Realtime
+- Real-time updates with Supabase Realtime
 - Dashboard analytics
 - QR/table-based ordering
 - 3D/AR food visualization
@@ -15,6 +17,18 @@ Restaurant management and ordering system built as a University Final Year Proje
 ## Tech Stack
 
 React · TypeScript · Vite · Supabase · PostgreSQL · Firebase · Tailwind CSS · shadcn/ui
+
+## Screenshots
+
+![Customer Ordering](docs/screenshots/customer-ordering.png)
+
+![Admin Dashboard](docs/screenshots/admin-dashboard.png)
+
+![Kitchen Dashboard](docs/screenshots/kitchen-dashboard.png)
+
+## Demo Video
+
+[▶ Watch AResto Demo](docs/demo/aresto-demo.mp4)
 
 ## Architecture
 
@@ -25,11 +39,7 @@ React · TypeScript · Vite · Supabase · PostgreSQL · Firebase · Tailwind CS
 
 ## Database
 
-The project uses PostgreSQL with entities for branches, tables, shifts, orders, order items, menu items, and related restaurant data.
-
-## Screenshots
-
-Screenshots are available in [`docs/screenshots`](./docs/screenshots).
+PostgreSQL database with entities for branches, tables, shifts, orders, order items, menu items, and related restaurant data.
 
 ## Installation
 
