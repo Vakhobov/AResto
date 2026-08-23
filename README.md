@@ -20,15 +20,18 @@ React · TypeScript · Vite · Supabase · PostgreSQL · Firebase · Tailwind CS
 
 ## Screenshots
 
-![Customer Ordering](docs/screenshots/customer-ordering.png)
+### Main Page
+![Main Page](docs/screenshots/mainpage.png)
 
-![Admin Dashboard](docs/screenshots/admin-dashboard.png)
+### Admin Panel
+![Admin Panel](docs/screenshots/adminpanel.png)
 
-![Kitchen Dashboard](docs/screenshots/kitchen-dashboard.png)
+### Kitchen Display
+![Kitchen Display](docs/screenshots/kitchendisplay.png)
 
 ## Demo Video
 
-[▶ Watch AResto Demo](docs/demo/aresto-demo.mp4)
+A full project walkthrough is available in the repository demo files.
 
 ## Architecture
 
