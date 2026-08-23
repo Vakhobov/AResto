@@ -29,12 +29,6 @@ React · TypeScript · Vite · Supabase · PostgreSQL · Firebase · Tailwind CS
 ### Kitchen Display
 ![Kitchen Display](docs/screenshots/kitchendisplay.png)
 
-## Demo Video
-
-[▶ Watch AResto Demo Video](docs/demo/demo.MOV)
-
-> The demo video is included in the repository and shows the main application workflow.
-
 ## Architecture
 
 - React frontend with component-based architecture
