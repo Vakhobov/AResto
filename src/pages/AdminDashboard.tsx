@@ -55,10 +55,13 @@ const AdminDashboard = () => {
         if (mounted) setLoading(true);
         const res = await getDashboardAnalytics(branchId, activeRange, range);
         if (mounted) setData(res);
+      } catch (err) {
+        console.error('Dashboard fetch error:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     };
+
 
     fetchData();
 
