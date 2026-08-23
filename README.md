@@ -31,7 +31,9 @@ React · TypeScript · Vite · Supabase · PostgreSQL · Firebase · Tailwind CS
 
 ## Demo Video
 
-A full project walkthrough is available in the repository demo files.
+[▶ Watch AResto Demo Video](docs/demo/demo.MOV)
+
+> The demo video is included in the repository and shows the main application workflow.
 
 ## Architecture
 
